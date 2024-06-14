@@ -84,9 +84,12 @@ head(sort(table(sraPre[!is.na(sraPre$Sampling_site),]$Sampling_site), decreasing
 
 sraPreOld <- sraPre[,c('SRA.Study','Center.Name','BioSample','Organism','LibrarySource','Cell_type','Tissue','Cell_line','disease','ETHNICITY','disease_state','Diagnosis','tissue_type','clinical_information','RACE','Site','health_state','Population','tissue_source','geo_loc_name_country','geo_loc_name_country_continent','DONOR_HEALTH_STATUS','DONOR_ETHNICITY','geo_loc_name','reported_race','source_tissue',"ReleaseDate","create_date","ancestry","donor_id", "Sample_type", "Sample.Name", "source_name", "source_material_cell_type", "source_material", "tissue.cell_type_source", "tissue_source")]
 
-write.table(sraPreOld,'20240613_run_selector_metadata.txt',quote=F,row.names=F,sep='\t')
+# There's a couple of rows with a tab in them, which confuses the fread command later, so we should strip that:
+sraPreOld$Sample.Name <- gsub("\t293T", "293T", sraPreOld$Sample.Name)
 
+write.table(sraPreOld,'20240613_run_selector_metadata.txt',quote=F,row.names=F,sep='\t')
 ```
+
 We cannot run everything in one go, so we split here like Amanda was doing, because otherwise we run out of RAM pretty quickly... But the process for combining is the same, and we do another round of checking for interesting columns
 
 ```{r new-sra}
