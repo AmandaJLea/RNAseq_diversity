@@ -7,9 +7,9 @@ editor_options:
   chunk_output_type: console
 ---
 
-This file contains the actual analysis code for my parts of the project. It starts with `allSRAFinal.rds`, which is generated at the end of `2024-06-11-diversity_rna_seq.Rmd` but does the actual analyses of diversity across tissues and studies and all that goodness. 
+This file contains the actual analysis code for my parts of the project. It starts with `allSRAFinal.rds`, which is generated at the end of `02_clean_ancestry_terms.Rmd` but does the actual analyses of diversity across tissues and studies and all that goodness. 
 
-We begin by reading things in and picking colours etc; we'll be working off the preliminary analyses I did in earlier files such as `2024-05-06-diversity_rna_seq.Rmd`, which also detailed the clean-up of the cell line and tissue type columns.
+tissue type columns.
 
 #### Cleaning up and pre-processing
 
@@ -29,36 +29,55 @@ allSRAFinal <- readRDS("allSRAFinal.rds")
 
 ```
 
-### Quick look at the tissue type descriptors to get some numbers... 
+### Quick look at the tissue type descriptors to get some numbers... Some of these clearly do not contain cell type info, but others do, and sorting those out is joyous. 
 
 ```{r tissues-quick-look}
-length(table(allSRAFinal$Cell_line)) # Ignoring this one, because we only care about primary tissues, not cell lines
-length(table(allSRAFinal$tissue_source)) # Also this one, it's all NA
-length(table(allSRAFinal$source_tissue)) 
-table(allSRAFinal$health_state)
+table(allSRAFinal$Cell_type) # Useful
+table(allSRAFinal$Tissue) # Useful
+table(allSRAFinal$tissue_type) # Useful
+table(allSRAFinal$Sample_type) # Somewhat useful
+table(allSRAFinal$Sample.Name) # Nope
+table(allSRAFinal$source_name) # Useful
+table(allSRAFinal$source_material_cell_type) # goes with the next column
+table(allSRAFinal$source_material) #
+table(allSRAFinal$SAMPLE_TYPE) # Somewhat useful
+table(allSRAFinal$Sampling_site) # A single study once again...
 
-length(table(allSRAFinal$Cell_type))
-length(table(allSRAFinal$Tissue))
-length(table(allSRAFinal$tissue_type))
-
-# Let's fix all the NAs:
-allSRAFinal$Cell_type <- na_if(allSRAFinal$Cell_type, "NA")
-allSRAFinal$Tissue <- na_if(allSRAFinal$Tissue, "NA")
-allSRAFinal$tissue_type <- na_if(allSRAFinal$tissue_type, "NA")
-
-(table(is.na(allSRAFinal$Tissue))) #
-(table(is.na(allSRAFinal$tissue_type)))
-(table(is.na(allSRAFinal$Cell_type)))
-
+# The most useful ones are gonna be Tissue, Cell_type and source_name, I think
 (table(is.na(allSRAFinal$Tissue), is.na(allSRAFinal$Cell_type)))
+head(allSRAFinal[!is.na(allSRAFinal$Tissue) & !is.na(allSRAFinal$Cell_type), ])
 
-# So, most of the samples have some sort of info, so that's nice, but there's still about 3000 that we're gonna have no info on... what on earth are those??? 
+(table(is.na(allSRAFinal$Tissue), is.na(allSRAFinal$source_name)))
+head(allSRAFinal[!is.na(allSRAFinal$Tissue) & !is.na(allSRAFinal$source_name), ])
 
+(table(is.na(allSRAFinal$Cell_type), is.na(allSRAFinal$source_name)))
+head(allSRAFinal[!is.na(allSRAFinal$Cell_type) & !is.na(allSRAFinal$source_name), ])
+```
+
+The reason I went down this rabbit hole was that tehre were about 3000 samples that didn't have tissue info if we focused on the most complete categories: `Cell_type` and `Tissue`. I checked some manually and most of them seemed to have info in `source_name`, which I then rescued from the original SRA downloads... so let's look at whether we really need the info from the other columns too:
+
+```{r tissues-quick-look-2}
 head(allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type), ])
-sort(table(allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type) & is.na(allSRAFinal$tissue_type), ]$SRA.Study), decreasing = T)
+head(allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type) & is.na(allSRAFinal$source_name), ])
 
+dim(allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type) & is.na(allSRAFinal$source_name) & is.na(allSRAFinal$tissue_type), ])
+
+noInfo <- allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type) & is.na(allSRAFinal$source_name) & is.na(allSRAFinal$tissue_type), ]
+table(noInfo$SRA.Study) 
+
+by(noInfo, noInfo$SRA.Study, function(x) head(x, n=20)) 
 
 ```
+Let's check these...
+
+* ERP001942: TSI, CEU, etc - either LCLs or nothing, but eitehr way we would not want to keep it? Project title is "RNA-sequencing of 465 lymphoblastoid cell lines from the 1000 Genomes" so set to LCL? Info recorded in 'strain' according to runselector
+* ERP116722: Bunch of African inds with malaria, but no tissue info in any of the columns I kept; grabbed the raw data from run selector and it's in a column called `Organism_part`.
+* ERP117085: Blood, according to project title, recorded in `Organism part`
+* ERP122083: Some sort of cancer sample, maybe? Tissue provenance recorded in `Sampling_site` and also `Organism_part`, and it's unclear if these are healthy biopsies or cancer biopsies or both.
+* ERP122103: Sampling site info is in `Organism_part`, but like above, pretty sure these are cancer biopsies? 
+* ERP122256: Sampling site info is in `Organism_part`, but once again... cancer biopsies? Can't tell...
+
+
 
 I checked a couple manually on run selector:
 
@@ -69,27 +88,6 @@ I checked a couple manually on run selector:
 But this is nuts, because half the time the column is only viewable when you download the complete metadata, and not on the web...
 
 So we're gonna try something crazy and see if we can grab the metadata programmatically, using a package I found online to grab metadata:
- 
-```{r rescue-source-name}
-install.packages('BiocManager')
-BiocManager::install('SRAdb')
-
-sra_dbname <- file.path(system.file('extdata', package='SRAdb'), 'SRAmetadb_demo.sqlite')	
-sra_con <- dbConnect(dbDriver("SQLite"), sra_dbname)
-
-a <- colDescriptions(sra_con=sra_con)[1:5,]
-a
-b <- sraConvert( in_acc=c("SRR000137", "SRR000138"), out_type=c('sample'), sra_con=sra_con )
-b
-
-getSRA (search_terms ='SRP359396', out_types=c('run','study', 'sample'), sra_con=sra_con)  
-
-getSRAinfo (in_acc=c("SRS012041","SRS000290"), sra_con=sra_con, sraType='sra')
-
-    getSRAfile( in_acc = c("SRR000648","SRR000657"), sra_con = sra_con, destDir = getwd(), fileType = 'sra' )
-
-```
-
 
 # I have Amanda's code, so I can just rerun everything to consolidate again...
 
