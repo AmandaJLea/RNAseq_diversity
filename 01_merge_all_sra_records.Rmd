@@ -66,7 +66,6 @@ head(sort(table(sraPre[!is.na(sraPre$biosample_type),]$biosample_type), decreasi
 head(sort(table(sraPre[!is.na(sraPre$SAMPLE),]$SAMPLE), decreasing=T), n = 20)
 head(sort(table(sraPre[!is.na(sraPre$sample_title),]$sample_title), decreasing=T), n = 20)
 head(sort(table(sraPre[!is.na(sraPre$Sample_Group),]$Sample_Group), decreasing=T), n = 20)
-head(sort(table(sraPre[!is.na(sraPre$Sample.Name),]$Sample.Name), decreasing=T), n = 20) # Keep
 head(sort(table(sraPre[!is.na(sraPre$samplename),]$samplename), decreasing=T), n = 20)
 head(sort(table(sraPre[!is.na(sraPre$host_tissue_sampled),]$host_tissue_sampled), decreasing=T), n = 20)
 
@@ -80,12 +79,11 @@ head(sort(table(sraPre[!is.na(sraPre$Isolation_source),]$Isolation_source), decr
 head(sort(table(sraPre[!is.na(sraPre$tissue_source),]$tissue_source), decreasing=T), n = 20) # Keep
 head(sort(table(sraPre[!is.na(sraPre$tissue.cell_type_source),]$tissue.cell_type_source), decreasing=T), n = 20) # Keep
 
+head(sort(table(sraPre[!is.na(sraPre$Organism_part),]$Organism_part), decreasing=T), n = 20) # Keep
+
 head(sort(table(sraPre[!is.na(sraPre$Sampling_site),]$Sampling_site), decreasing=T), n = 20) # Reject
 
-sraPreOld <- sraPre[,c('SRA.Study','Center.Name','BioSample','Organism','LibrarySource','Cell_type','Tissue','Cell_line','disease','ETHNICITY','disease_state','Diagnosis','tissue_type','clinical_information','RACE','Site','health_state','Population','tissue_source','geo_loc_name_country','geo_loc_name_country_continent','DONOR_HEALTH_STATUS','DONOR_ETHNICITY','geo_loc_name','reported_race','source_tissue',"ReleaseDate","create_date","ancestry","donor_id", "Sample_type", "Sample.Name", "source_name", "source_material_cell_type", "source_material", "tissue.cell_type_source", "tissue_source")]
-
-# There's a couple of rows with a tab in them, which confuses the fread command later, so we should strip that:
-sraPreOld$Sample.Name <- gsub("\t293T", "293T", sraPreOld$Sample.Name)
+sraPreOld <- sraPre[,c('SRA.Study','Center.Name','BioSample','Organism','LibrarySource','Cell_type','Tissue','Cell_line','disease','ETHNICITY','disease_state','Diagnosis','tissue_type','clinical_information','RACE','Site','health_state','Population','tissue_source','geo_loc_name_country','geo_loc_name_country_continent','DONOR_HEALTH_STATUS','DONOR_ETHNICITY','geo_loc_name','reported_race','source_tissue',"ReleaseDate","create_date","ancestry","donor_id", "Sample_type", "source_name", "source_material_cell_type", "source_material", "tissue.cell_type_source", "tissue_source", "Organism_part")]
 
 write.table(sraPreOld,'20240613_run_selector_metadata.txt',quote=F,row.names=F,sep='\t')
 ```
@@ -140,7 +138,7 @@ head(sort(table(sraPre[!is.na(sraPre$source_organ),]$source_organ), decreasing=T
 
 head(sort(table(sraPre[!is.na(sraPre$Sampling_site),]$Sampling_site), decreasing=T), n = 20) # Keep
 
-sraPreNew <- sraPre[,c('SRA.Study','Center.Name','BioSample','Organism','LibrarySource','Cell_type','Tissue','Cell_Line','disease','ETHNICITY','disease_state','Diagnosis','tissue_type','clinical_information','RACE','Site','health_state','Population','tissue_source','geo_loc_name_country','geo_loc_name_country_continent','geo_loc_name','reported_race','source_tissue',"ReleaseDate","create_date","ancestry","race.ethnicity","primary_race",'geographical_location',"donor_id", "Sample.Name", "source_name", "source_materal_id", "tissue_source", "SAMPLE_TYPE", "sample_origin", "tissue.cell_type_source", "source_organ", "Sampling_site")]
+sraPreNew <- sraPre[,c('SRA.Study','Center.Name','BioSample','Organism','LibrarySource','Cell_type','Tissue','Cell_Line','disease','ETHNICITY','disease_state','Diagnosis','tissue_type','clinical_information','RACE','Site','health_state','Population','tissue_source','geo_loc_name_country','geo_loc_name_country_continent','geo_loc_name','reported_race','source_tissue',"ReleaseDate","create_date","ancestry","race.ethnicity","primary_race",'geographical_location',"donor_id", "source_name", "source_materal_id", "tissue_source", "SAMPLE_TYPE", "sample_origin", "tissue.cell_type_source", "source_organ", "Sampling_site", "Organism_part")]
                        
 write.table(sraPreNew,'20240613_run_selector_metadata_post2019.txt',quote=F,row.names=F,sep='\t')
 ```
