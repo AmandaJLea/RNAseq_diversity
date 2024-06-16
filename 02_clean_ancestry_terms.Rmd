@@ -409,6 +409,12 @@ Looking good! And so...
 ```{r update-descriptors-final}
 table(is.na(allSRAClean$finalGeography))
 table(is.na(allSRAClean$finalRace)) 
+table(is.na(allSRAClean$finalGeography), is.na(allSRAClean$finalRace)) # 2000 samples with neither label oh noes! 
+
+# Let's have a quick look and then get rid of them:
+head(allSRAClean[is.na(allSRAClean$finalGeography) & is.na(allSRAClean$finalRace) & is.na(allSRAClean$hispanic),]) 
+
+allSRAClean <- (allSRAClean[!is.na(allSRAClean$finalRace) | !is.na(allSRAClean$finalGeography) | !is.na(allSRAClean$hispanic),])
 
 table(allSRAClean$finalGeography)
 table(allSRAClean$finalRace)
