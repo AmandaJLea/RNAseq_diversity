@@ -316,15 +316,13 @@ table(sourceOrganMismatches$finalOrgan, sourceOrganMismatches$source_nameOrgan)
 table(sourceSystemMismatches$finalSystem, sourceSystemMismatches$source_nameSystem)
 ```
 
-Some of these are clear incorrect assignments when cleaning up the tissue stuff, and so the big spreadsheet needs to be updated, eg, the foreskin fibroblasts from Coriell which came up as urogenital (SRP070663, now fixed). However, there's also a lot of problems with samples that do end up in different classes depending of which column one looks at, eg, SRP266877 should really be under iPSC but isn't because tissue is given as blood, even though it's an established cell line... Not all the cases are clear cut, and some are straight up contradictory, eg, DRP001797, which says endocardial cells but also endothelium of blood vessels, or, SRP056287, which gives cell type as cortical neurons, and tissue as fibroblast (are these iPSC derived?). I think the easiest thing is to set these to NA.
+Some of these are clear incorrect assignments when cleaning up the tissue stuff, and so the big spreadsheet needs to be updated, eg, the foreskin fibroblasts from Coriell which came up as urogenital (SRP070663, now fixed). However, there's also a lot of problems with samples that do end up in different classes depending of which column one looks at, eg, SRP266877 should really be under iPSC but isn't because tissue is given as blood, even though it's an established cell line... Not all the cases are clear cut, and some are straight up contradictory, eg, DRP001797, which says endocardial cells but also endothelium of blood vessels, or, SRP056287, which gives cell type as cortical neurons, and tissue as fibroblast and which seem to be iPSC-derived cortical neurons (updated), or SRP259538, which lists cardiomyocyte and foetal lung (but they're cell-line derived anyhow)
 
 There's a lot of immune cells sampled in the lung, and I'm not sure what to do with them - keep them as both things?
 
 Finally, others are weird mistakes in the code that I don't quite understand, eg blood and blood coming up as mismatches... but coming up as true when I do a logical test. Not sure what to do with those, so just ignoring them right now. Not too hard!
 
-
-
-Then, some checks for missingness etc
+So that's a first pass, but we need to get rid of established cell lines and then come back to some of this. Next, some checks for missingness etc
 
 ```{r tissues-merge-update-missing}
 table(allSRAFinal$finalSystem)
@@ -385,22 +383,12 @@ The brutal approach is to simply remove the entire study, and then come back aga
 ```{r tissues-merge-update-cell-line}
 table(!is.na(allSRAFinal$Cell_line))
 
-head(sort(table(allSRAFinal$Cell_line), decreasing=T), n = 50) # Some of these are clear keepers, some of the are clear removal. 
+head(sort(table(allSRAFinal$Cell_line), decreasing=T), n = 100) # Some of these are clear keepers, some of the are clear removal. 
 
 allSRAFinal[allSRAFinal$Cell_line %in% "WTC-11",] # This one is fraught - should've been classified as iPSC
 
 ```
 
-Terms I like to whitelist:
-LCL
-PBMC
-lymphoblastoid cell line
-primary
-fibroblast
-fibroblasts
-
-
-LCL	immune	blood	CL:0000988	UBERON:0000178
 
 
 
@@ -416,8 +404,6 @@ by(allSRAFinal, allSRAFinal$finalSystem, function(x) head(x[,columnsILike], n=10
 by(allSRAFinal, allSRAFinal$finalOrgan, function(x) head(x[,columnsILike], n=10))
 ```
 
-Some issues and mistakes:
-We still have that single LCL study to fix.
 
 The umbilical cord is incorrectly classified as reproductive, when it's MSCs, so let's be systematic and ask about disagreement between the all possible classifications:
 
