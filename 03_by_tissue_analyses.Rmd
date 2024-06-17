@@ -405,11 +405,8 @@ by(allSRAFinal, allSRAFinal$finalOrgan, function(x) head(x[,columnsILike], n=10)
 ```
 
 
-The umbilical cord is incorrectly classified as reproductive, when it's MSCs, so let's be systematic and ask about disagreement between the all possible classifications:
 
 
-
-Stopping here for tonight... Why do some classifications disagree sometimes? Some of these are expected, but we should decide which classification we're using, I guess - system or organ, but also, cell type or tissue?? 
 
 ```{r check-disagreements}
 
