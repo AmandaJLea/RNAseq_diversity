@@ -14,7 +14,6 @@ knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA
 # But we also have to do this manually because R studio is stupid: 
 setwd(knitr::opts_knit$get("root.dir"))
 library(ggplot2)
-library(rols)
 library(data.table)
 library(plyr)
 library(reshape)
@@ -413,7 +412,6 @@ table(is.na(allSRAClean$finalGeography), is.na(allSRAClean$finalRace)) # 2000 sa
 
 # Let's have a quick look and then get rid of them:
 head(allSRAClean[is.na(allSRAClean$finalGeography) & is.na(allSRAClean$finalRace) & is.na(allSRAClean$hispanic),]) 
-
 allSRAClean <- (allSRAClean[!is.na(allSRAClean$finalRace) | !is.na(allSRAClean$finalGeography) | !is.na(allSRAClean$hispanic),])
 
 table(allSRAClean$finalGeography)
@@ -421,6 +419,58 @@ table(allSRAClean$finalRace)
 
 allSRAFinal <- allSRAClean[,c(1:45, 54:56)]
 dim(allSRAFinal)
+
+# Some nice plots about this, quickly:
+sampleGeography <- allSRAFinal %>% count(SRA.Study, finalGeography) %>% drop_na(finalGeography)
+sampleRace <- allSRAFinal %>% count(SRA.Study, finalRace) %>% drop_na(finalRace)
+meltSampleGeography <- melt(sampleGeography)
+meltSampleRace <- melt(sampleRace)
+
+ggplot(meltSampleGeography, aes(x = finalGeography, y=value,fill=finalGeography)) +
+  geom_boxplot(width=0.5, alpha=0.4) +
+  geom_jitter(size=1, width=0.2) +
+  theme_bw() +
+  ggtitle("Geography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleGeography, aes(x = finalGeography, y=value,fill=finalGeography)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("Geography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleRace, aes(x = finalRace, y=value,fill=finalRace)) +
+  geom_boxplot(width=0.5, alpha=0.4) +
+  geom_jitter(size=1, width=0.2) +
+  theme_bw() +
+  ggtitle("Race across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleRace, aes(x = finalRace, y=value,fill=finalRace)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("Race across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
 
 # And then cleaning out a bunch of rows that are all NA
 not_all_na <- function(x) any(!is.na(x))
