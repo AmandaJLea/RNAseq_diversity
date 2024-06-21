@@ -34,6 +34,7 @@ for (i in 1:length(files)){
 }
 
 dim(sraPre)
+oldTerms <- names(sraPre)
 
 missing <- as.data.frame(apply(sraPre,2,function(x) length(which(x=='' | is.na(x)))))
 missing$prop <- missing[,1]/dim(sraPre)[1]
@@ -101,6 +102,10 @@ for (i in 1:length(newFiles)){
 }
 
 dim(sraPre)
+newTerms <- names(sraPre)
+
+#How many terms in total?
+length(unique(c(oldTerms, newTerms))
 
 # Missingness checks don't work here (out of ram) so we move straight to looking at some column names and labels:
 names(sraPre)[grep("sample", names(sraPre), ignore.case=T)]
