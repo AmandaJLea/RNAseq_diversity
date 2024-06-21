@@ -1,0 +1,162 @@
+---
+title: "Fetching missing sequencing sites."
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+We wanted to work out who is sequencing what, and for that we need to fill in a lot of the studies that were submitted by GEO to SRA instead of directly by the submitter. This requires a couple of steps:
+
+First we convert from SRA.Study to Bioproject ID. Then we use the Bioproject ID to fetch the summary using NCBI's eutils' package, so we gotta mix up bash and R in here... yeugh. 
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(viridis)
+library(reutils)
+options(device = "quartz")
+
+allSRAFinal <- readRDS("allSRAFinalTissues.rds")
+```
+
+Grab all the SRA IDs that were deposited by GEO and let's figure out where we go from there...
+
+```{r depositing-site}
+length(unique(allSRAFinal$Center.Name))
+
+siteStudy <- allSRAFinal %>% count(Center.Name, SRA.Study)
+geoStudies <- siteStudy[siteStudy$Center.Name %in% "GEO",]$SRA.Study 
+
+# We need a couple of things, then - a SRA to Bioproject connection, and then the bioproject to sequencing site connection. We break the reutils commands into two and apply them both. 
+
+# Need to troubleshoot this probably
+getBioproject <- lapply(as.list(geoStudies[1:40]), function(x) esearch(x, "sra", retmax=1))
+geteLink <- lapply(getBioproject, function(x) elink(x, dbFrom="sra", dbTo="bioproject", linkname="sra_bioproject_all"))
+
+matchingIDs <- data.frame()
+failures <- character()
+
+i <- 1
+
+for (i in 1:length(geteLink)){
+  # This can be dealt with by using bind
+  potato <- content(esummary(geteLink[[i]]), "parsed") # That gets me the submitter, but it's divorced from the SRA id unless I confirm the order is maintained...
+  submitterInfo <- c(potato$Project_Acc, potato$Submitter_Organization)
+  usefulInfo <- c(geteLink[[i]]$params$id, submitterInfo)
+  print(usefulInfo)
+  print(length(usefulInfo))
+    if(length(usefulInfo) == 3){
+    matchingIDs <- rbind(matchingIDs, usefulInfo)
+  } else {
+    print(paste0("Cannot resolve ID", usefulInfo))
+    failures <- c(failures, usefulInfo)
+        }
+}
+
+
+blah <- content(esummary(elink(failures[3], dbFrom="sra", dbTo="bioproject", linkname="sra_bioproject_all")))
+
+library(XML)
+
+ugh <- xmlValue(blah[1])
+
+
+
+to_mod <- xml_find_all(blah, "//Submitter_Organization")
+
+?xml_find_all
+
+xml_text(to_mod)
+# [1] "300"
+xml_text(to_mod) <- "100"
+xml_text(to_mod)
+# [1] "100"
+
+
+this.runID <- "SRR10025068"
+#
+entrez.cmd <- paste0("esearch -db 'sra' -query '", this.runID,"' | esummary  -db 'all' -format runinfo")
+entrez.cmd
+[1] "esearch -db 'sra' -query 'SRR10025068' | esummary  -db 'all' -format runinfo"
+#
+entrez.intern <- system(entrez.cmd, intern=TRUE)
+entrez.intern
+[1] "Run,ReleaseDate,LoadDate,spots,bases,spots_with_mates,avgLength,size_MB,AssemblyName,download_path,Experiment,LibraryName,LibraryStrategy,LibrarySelection,LibrarySource,LibraryLayout,InsertSize,InsertDev,Platform,Model,SRAStudy,BioProject,Study_Pubmed_id,ProjectID,Sample,BioSample,SampleType,TaxID,ScientificName,SampleName,g1k_pop_code,source,g1k_analysis_group,Subject_ID,Sex,Disease,Tumor,Affection_Status,Analyte_Type,Histological_Type,Body_Site,CenterName,Submission,dbgap_study_accession,Consent,RunHash,ReadHash"
+[2] "SRR10025068,2019-08-27 18:44:15,2019-08-27 16:31:34,12479737,3768880574,12479737,302,1154,,https://sra-download.ncbi.nlm.nih.gov/traces/sra25/SRR/009790/SRR10025068,SRX6762113,1168003_D6_S,WGS,RANDOM,METAGENOMIC,PAIRED,0,0,ILLUMINA,Illumina NovaSeq 6000,SRP219390,PRJNA561398,,561398,SRS5310604,SAMN12617402,simple,408170,human gut metagenome,30185,,,,,,,no,,,,,YALE SCHOOL OF PUBLIC HEALTH,SRA948009,,public,E799243BAFB62132C20AC9F550F70206,052064FDF091B79E9DA48242EF5F98A2"                                             
+[3] ""
+
+r1 <- entrez_fetch(db='sra', id='SAMN00113441', rettype='runinfo', retmode='xml', parsed=TRUE)
+
+
+
+
+geoStudies[1]
+
+#
+entrez.colnames <- unlist(strsplit(entrez.intern[1], ","))
+entrez.data <- unlist(strsplit(entrez.intern[2], ","))
+this.entrez.data <- t(data.frame(entrez.data))
+colnames(this.entrez.data) <- as.character(entrez.colnames)
+rownames(this.entrez.data) <- this.runID
+
+
+
+
+
+
+
+
+library(rentrez)
+onion <- entrez_search(db="biosample", term="SAMN00113441", retmax=1)
+tomato <- entrez_summary(db="biosample", id=onion$ids)
+extract_from_esummary(tomato, "sampledata")
+
+read_xml(tomato$sampledata)
+
+r_search <- entrez_search(db="sra", term="SRR10025068")
+r_search.id <- r_search$ids
+all_the_links <- entrez_link(dbfrom='sra', id=r_search.id, db='all')
+r_summ <- entrez_summary(db="sra", id=all_the_links$links$sra_bioproject_all)
+
+
+xml.data.dirty <- r_summ$expxml
+xml.data.5knwn <- gsub("&gt;", ">", xml.data.dirty)
+xml.data.5knwn <- gsub("&lt;", "<", xml.data.5knwn)
+xml.data.5knwn <- gsub("&amp;", "&", xml.data.5knwn)
+xml.data.5knwn <- gsub("&apos;", "'", xml.data.5knwn)
+xml.data.5knwn <- gsub("&quot;", '"', xml.data.5knwn)
+xml.data.5knwn.clean <- gsub(" ", "", xml.data.5knwn)
+xml.data.5knwn.clean
+
+onion <- xmlParse(xml.data.5knwn.clean)
+
+res <- entrez_search(db = "clinvar", term = "BRCA1", retmax=10)
+ cv <- entrez_summary(db="clinvar", id=res$ids)
+ cv
+ extract_from_esummary(cv, "title", simplify=FALSE)
+ extract_from_esummary(cv, "trait_set")[1:2] 
+ extract_from_esummary(cv, "gene_sort") 
+
+
+
+# potato <- entrez_fetch(db="sra", id=onion$ids, rettype="xml")
+
+?entrez_fetch
+
+matchingIDs
+# Now we still need to link the SRA ID back to the UID, which is annoying and would be easier if I split getBioproject into two
+  
+
+```
+
+
+```
+
