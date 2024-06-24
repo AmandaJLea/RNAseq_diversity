@@ -1,0 +1,366 @@
+---
+title: "Diversity project analyses second pass"
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Now properly ready to analyse things across multiple axes, with no more cleaning of data (I am tired of cleaning data.)
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(viridis)
+options(device = "quartz")
+
+allSRAFinal <- readRDS("allSRAFinalTissuesCentersDisease.rds")
+```
+
+We want to look at the following things:
+
+1. Who is being sequenced?
+2. By whom? Where?
+3. Across what tissues?
+4. What diseases?
+
+Some of this repeats an earlier script, `04_first_analysis_pass.Rmd`, but we keep it here for consistency and so it's easier to tweak things in one go. 
+
+## Who is being sequenced?
+
+```{r plot-clean-geography}
+sampleGeography <- allSRAFinal %>% count(SRA.Study, finalGeography) %>% drop_na(finalGeography)
+sampleRace <- allSRAFinal %>% count(SRA.Study, finalRace) %>% drop_na(finalRace)
+meltSampleGeography <- melt(sampleGeography)
+meltSampleRace <- melt(sampleRace)
+
+table(allSRAFinal$finalGeography)
+table(allSRAFinal$finalRace)
+
+sum(table(allSRAFinal$finalGeography))
+sum(table(allSRAFinal$finalRace))
+
+ggplot(meltSampleGeography, aes(x = finalGeography, y=value,fill=finalGeography)) +
+  geom_boxplot(width=0.5, alpha=0.4) +
+  geom_jitter(size=1, width=0.2) +
+  theme_bw() +
+  ggtitle("Geography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleGeography, aes(x = finalGeography, y=value,fill=finalGeography)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("Geography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleRace, aes(x = finalRace, y=value,fill=finalRace)) +
+  geom_boxplot(width=0.5, alpha=0.4) +
+  geom_jitter(size=1, width=0.2) +
+  theme_bw() +
+  ggtitle("Race across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleRace, aes(x = finalRace, y=value,fill=finalRace)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("Race across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+```
+
+## 2. And by who? Where is the sequencing happening?
+
+```{r plot-clean-country}
+geographyClean <- allSRAFinal %>% drop_na(finalGeography)
+raceClean <- allSRAFinal %>% drop_na(finalRace)
+
+ggplot(geographyClean, aes(x = finalCountry, fill = finalGeography)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
+  theme_bw() +
+  ggtitle("Geography across all studies") +
+  xlab("SRA Depositor location") +
+  ylab("Samples (log10)") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+ggplot(raceClean, aes(x = finalCountry, fill=finalRace)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
+  theme_bw() +
+  ggtitle("Race across all studies") +
+  xlab("SRA Depositor location") +
+  ylab("Samples (log10)") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+```
+
+More clearly, who is sequencing each pop descriptor?
+
+```{r plot-clean-country-2}
+ggplot(geographyClean, aes(fill = finalCountry, x = finalGeography)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
+  theme_bw() +
+  ggtitle("Country of sequencing across descriptors") +
+  xlab("Geographic descriptor") +
+  ylab("Samples (log10)") +
+  scale_y_continuous(trans='log10') +
+  # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+ggplot(raceClean, aes(fill = finalCountry, x = finalRace)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
+  theme_bw() +
+  ggtitle("Country of sequencing across descriptors") +
+  xlab("SRA Depositor location") +
+  ylab("Samples (log10)") +
+  scale_y_continuous(trans='log10') +
+  # scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+```
+
+## 3. What tissues are they sequencing?
+
+
+```{r first-pass-tissue}
+# First we focus on population descriptors:
+bigGeographySummary <- allSRAFinal %>% count(SRA.Study, finalGeography, finalSystem, finalOrgan)
+bigRaceSummary <- allSRAFinal %>% count(SRA.Study, finalRace, finalSystem, finalOrgan)
+GeographySummary <- allSRAFinal %>% count(finalGeography, finalSystem, finalOrgan)
+raceSummary <- allSRAFinal %>% count(finalRace, finalSystem, finalOrgan)
+
+meltGeography <- melt(GeographySummary)
+meltRace <- melt(raceSummary)
+
+meltGeography %>% drop_na(c(finalSystem, finalGeography)) %>%
+  ggplot(., aes(x = finalSystem, y=value, fill=finalGeography)) +
+    geom_bar(stat="identity") +
+    ggtitle("Biological System by Geography") +
+    # xlab("finalSystem") +
+    ylab("Count") +
+    theme_bw() +
+    scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position="bottom")
+
+meltGeography %>% drop_na(c(finalOrgan, finalGeography)) %>%
+  ggplot(., aes(x = finalOrgan, y= value, fill=finalGeography)) +
+    geom_bar(stat="identity") +
+    theme_bw() +
+    ggtitle("Organ by Geography") +
+    # xlab("finalOrgan") +
+    ylab("Count") +
+    scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position="bottom")
+
+meltGeography %>% drop_na(c(finalOrgan, finalSystem, finalGeography)) %>%
+ggplot(., aes(x = finalOrgan, y= value, color=finalGeography, fill=finalGeography)) +
+  geom_jitter(size = 4, width=0.2) +
+  theme_bw() +
+  ggtitle("Organ by geography") +
+  # xlab("Organ") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_color_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "bottom")
+
+meltGeography %>% drop_na(c(finalSystem, finalGeography)) %>%
+ggplot(., aes(x = finalSystem, y= value, color=finalGeography, fill=finalGeography)) +
+  geom_jitter(size = 4, width=0.2) +
+  theme_bw() +
+  ggtitle("System by geography") +
+  # xlab("System") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_color_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "bottom")
+
+
+meltRace %>% drop_na(c(finalSystem, finalRace)) %>%
+  ggplot(., aes(x = finalSystem, y= value, fill=finalRace)) +
+    geom_bar(stat="identity") +
+    theme_bw() +
+    ggtitle("Biological System by Race") +
+    # xlab("finalSystem") +
+    ylab("Count") +
+    scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position="bottom")
+
+meltRace %>% drop_na(c(finalOrgan, finalRace)) %>%
+  ggplot(., aes(x = finalOrgan, y= value, fill=finalRace)) +
+    geom_bar(stat="identity") +
+    theme_bw() +
+    ggtitle("Organ by Race") +
+    # xlab("finalSystem") +
+    ylab("Count") +
+    scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position="bottom")
+
+meltRace %>% drop_na(c(finalOrgan, finalSystem, finalRace)) %>%
+ggplot(., aes(x = finalOrgan, y= value, color=finalRace, fill=finalRace)) +
+  geom_jitter(size = 4, width=0.2) +
+  theme_bw() +
+  ggtitle("Organ by race") +
+  # xlab("Organ") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_color_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "bottom")
+
+meltRace %>% drop_na(c(finalSystem, finalRace)) %>%
+ggplot(., aes(x = finalSystem, y= value, color=finalRace, fill=finalRace)) +
+  geom_jitter(size = 4, width=0.2) +
+  theme_bw() +
+  ggtitle("System by race") +
+  # xlab("System") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_color_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "bottom")
+```
+
+We're also interested in how diverse a given study is, and how many studies include samples from each descriptor. We can easily calculate all of that too, although it is hard to see visually. 
+
+```{r geography-by-study, include=T, eval=T}
+geographyStudy <- allSRAFinal %>% count(SRA.Study, finalGeography) %>% drop_na(finalGeography)
+
+# How many studies with any sort of Geography info?
+dim(geographyStudy)
+length(unique(geographyStudy$SRA.Study))
+
+# And some quick stats on diversity by study:
+geographyStudy %>% count(SRA.Study) %>% summary()
+
+# But... how many samples?
+ggplot(geographyStudy, aes(x = finalGeography, y=n, fill=SRA.Study)) +
+  geom_bar(stat="identity") +
+  ggtitle("Geography by Study") +
+  ylab("Count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none") 
+
+# This is hard to see, so:
+ddply(geographyStudy, "finalGeography", summarise, totalN = sum(n), meanN=mean(n), maxN=max(n), nStudies=length(unique((SRA.Study))))
+
+# Now adding the finalOrgan dimension
+geographyStudyfinalOrgan <- allSRAFinal %>% count(SRA.Study, finalGeography, finalOrgan) %>% drop_na(finalGeography, finalOrgan)
+
+ggplot(geographyStudyfinalOrgan, aes(x = finalGeography, y=n, fill=SRA.Study)) +
+  geom_bar(stat="identity") +
+  facet_wrap( ~ finalOrgan, nrow=3) +
+  ggtitle("Geography by study by organ") +
+  ylab("Count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none") 
+
+ggplot(geographyStudyfinalOrgan, aes(x = finalOrgan, y=n, fill=SRA.Study)) +
+  geom_bar(stat="identity") +
+  facet_wrap( ~ finalGeography, nrow=3) +
+  ggtitle("Geography by study by organ") +
+  ylab("Count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none") 
+
+# And now really broken down:
+ddply(geographyStudyfinalOrgan, c("finalGeography", "finalOrgan"), summarise, totalN = sum(n), meanN=mean(n), maxN=max(n), nStudies=length(unique((SRA.Study))))
+```
+
+* SRP245400: Splicing profile by capture RNA-seq identifies pathogenic germline variants in tumor suppressor genes (Ambry Genetics)
+* SRP333281: Intergrative Multi-Omics of Asian Pregnant Mother (Singapore)
+* SRP333281: Intergrative Multi-Omics of Asian Pregnant Mother (Singapore)
+* SRP237697: mRNA sequencing of 28 visceral leishmaniasis-HIV patients in NW-Ethiopia (pre-post treatment)
+* SRP388678: Identification and interpretation of splicing variants using paired DNA and RNA sequencing in a clinical cohort of patients tested for hereditary cancer predisposition (Ambry Genetics)
+* SRP358657: Local and finalSystemic transcriptomic responses from acute exercise induced muscle damage of the human knee extensor
+* SRP126583: A modular transcriptional signature identifies phenotypic heterogeneity of human tuberculosis infection
+* SRP126691: A modular transcriptional signature identifies phenotypic heterogeneity of human tuberculosis infection
+* SRP333281: Intergrative Multi-Omics of Asian Pregnant Mother (Singapore)
+* SRP200298: Transcriptome and methylome of human suicide attempter and major depressive disorder patient (Korea)
+
+These make sense! The Singaporean cohorts will be the three main Geography: (South) Chinese, Malay and Tamil; Ambry is of course invested in diversity, TB is unlikely to show up in Europe. Also I am willing to bet any amount of money that the digestive Asian sequencing comes from cancer samples too somehow?
+
+Anyhow, now we do the same for race:
+
+```{r race-by-study, include=T, eval=T}
+raceStudy <- allSRAFinal %>% count(SRA.Study, finalRace) %>% drop_na(finalRace)
+
+# How many studies with any sort of Race info?
+dim(raceStudy)
+length(unique(raceStudy$SRA.Study))
+
+# And some quick stats on diversity by study:
+raceStudy %>% count(SRA.Study) %>% summary()
+
+# But... how many samples?
+ggplot(raceStudy, aes(x = finalRace, y=n, fill=SRA.Study)) +
+  geom_bar(stat="identity") +
+  ggtitle("Race by Study") +
+  ylab("Count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none") 
+
+# This is hard to see, so:
+ddply(raceStudy, "finalRace", summarise, totalN = sum(n), meanN=mean(n), maxN=max(n), nStudies=length(unique((SRA.Study))))
+
+# Now adding the finalOrgan dimension
+raceStudyfinalOrgan <- allSRAFinal %>% count(SRA.Study, finalRace, finalOrgan) %>% drop_na(finalRace, finalOrgan)
+
+ggplot(raceStudyfinalOrgan, aes(x = finalRace, y=n, fill=SRA.Study)) +
+  geom_bar(stat="identity") +
+  facet_wrap( ~ finalOrgan, nrow=3) +
+  ggtitle("Race by study by organ") +
+  ylab("Count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none") 
+
+ggplot(raceStudyfinalOrgan, aes(x = finalOrgan, y=n, fill=SRA.Study)) +
+  geom_bar(stat="identity") +
+  facet_wrap( ~ finalRace, nrow=3) +
+  ggtitle("Race by study by organ") +
+  ylab("Count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none") 
+
+# And now really broken down:
+ddply(raceStudyfinalOrgan, c("finalRace", "finalOrgan"), summarise, totalN = sum(n), meanN=mean(n), maxN=max(n), nStudies=length(unique((SRA.Study))))
+```
+
+Wowowowow the stark difference. Would be nice to slice this by country of sampling to see if this is really driven by the USA, or if random people are using race terms...
