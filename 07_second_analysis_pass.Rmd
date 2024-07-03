@@ -1,5 +1,5 @@
 ---
-title: "Diversity project analyses second pass"
+title: "Diversity project actual analyses I swear"
 layout: "post"
 tags: "diversity"
 output: html_document
@@ -36,6 +36,13 @@ Some of this repeats an earlier script, `04_first_analysis_pass.Rmd`, but we kee
 ## Who is being sequenced?
 
 ```{r plot-clean-geography}
+# First we clean up the plotting labels:
+allSRAFinal <- allSRAFinal %>% group_by(finalRace) %>%
+               mutate(finalRace = gsub("or ", "or\n", finalRace)) %>% as.data.frame()
+
+allSRAFinal <- allSRAFinal %>% group_by(finalGeography) %>%
+               mutate(finalGeography = gsub("and ", "and\n", finalGeography)) %>% as.data.frame()
+
 sampleGeography <- allSRAFinal %>% count(SRA.Study, finalGeography) %>% drop_na(finalGeography)
 sampleRace <- allSRAFinal %>% count(SRA.Study, finalRace) %>% drop_na(finalRace)
 meltSampleGeography <- melt(sampleGeography)
@@ -108,7 +115,8 @@ ggplot(geographyClean, aes(x = finalCountry, fill = finalGeography)) +
   ylab("Samples (log10)") +
   scale_y_continuous(trans='log10') +
   scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
 
 ggplot(raceClean, aes(x = finalCountry, fill=finalRace)) +
   geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
@@ -118,7 +126,8 @@ ggplot(raceClean, aes(x = finalCountry, fill=finalRace)) +
   ylab("Samples (log10)") +
   scale_y_continuous(trans='log10') +
   scale_fill_viridis(discrete=T, na.value="grey50") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
 ```
 
 More clearly, who is sequencing each pop descriptor?
@@ -132,7 +141,8 @@ ggplot(geographyClean, aes(fill = finalCountry, x = finalGeography)) +
   ylab("Samples (log10)") +
   scale_y_continuous(trans='log10') +
   # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
 
 ggplot(raceClean, aes(fill = finalCountry, x = finalRace)) +
   geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
@@ -142,9 +152,10 @@ ggplot(raceClean, aes(fill = finalCountry, x = finalRace)) +
   ylab("Samples (log10)") +
   scale_y_continuous(trans='log10') +
   # scale_fill_viridis(discrete=T, na.value="grey50") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
-```
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
 
+```
 ## 3. What tissues are they sequencing?
 
 
@@ -160,28 +171,28 @@ meltRace <- melt(raceSummary)
 
 meltGeography %>% drop_na(c(finalSystem, finalGeography)) %>%
   ggplot(., aes(x = finalSystem, y=value, fill=finalGeography)) +
-    geom_bar(stat="identity") +
-    ggtitle("Biological System by Geography") +
-    # xlab("finalSystem") +
-    ylab("Count") +
-    theme_bw() +
-    scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
-    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-    theme(legend.position="bottom")
+  geom_bar(stat="identity") +
+  ggtitle("Biological System by Geography") +
+  # xlab("finalSystem") +
+  ylab("Count") +
+  theme_bw() +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
 
 meltGeography %>% drop_na(c(finalOrgan, finalGeography)) %>%
   ggplot(., aes(x = finalOrgan, y= value, fill=finalGeography)) +
-    geom_bar(stat="identity") +
-    theme_bw() +
-    ggtitle("Organ by Geography") +
-    # xlab("finalOrgan") +
-    ylab("Count") +
-    scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
-    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-    theme(legend.position="bottom")
+  geom_bar(stat="identity") +
+  theme_bw() +
+  ggtitle("Organ by Geography") +
+  # xlab("finalOrgan") +
+  ylab("Count") +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
 
 meltGeography %>% drop_na(c(finalOrgan, finalSystem, finalGeography)) %>%
-ggplot(., aes(x = finalOrgan, y= value, color=finalGeography, fill=finalGeography)) +
+  ggplot(., aes(x = finalOrgan, y= value, color=finalGeography, fill=finalGeography)) +
   geom_jitter(size = 4, width=0.2) +
   theme_bw() +
   ggtitle("Organ by geography") +
@@ -193,7 +204,7 @@ ggplot(., aes(x = finalOrgan, y= value, color=finalGeography, fill=finalGeograph
   theme(legend.position = "bottom")
 
 meltGeography %>% drop_na(c(finalSystem, finalGeography)) %>%
-ggplot(., aes(x = finalSystem, y= value, color=finalGeography, fill=finalGeography)) +
+  ggplot(., aes(x = finalSystem, y= value, color=finalGeography, fill=finalGeography)) +
   geom_jitter(size = 4, width=0.2) +
   theme_bw() +
   ggtitle("System by geography") +
@@ -207,28 +218,28 @@ ggplot(., aes(x = finalSystem, y= value, color=finalGeography, fill=finalGeograp
 
 meltRace %>% drop_na(c(finalSystem, finalRace)) %>%
   ggplot(., aes(x = finalSystem, y= value, fill=finalRace)) +
-    geom_bar(stat="identity") +
-    theme_bw() +
-    ggtitle("Biological System by Race") +
-    # xlab("finalSystem") +
-    ylab("Count") +
-    scale_fill_viridis(discrete=T, na.value="grey50") +
-    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-    theme(legend.position="bottom")
+  geom_bar(stat="identity") +
+  theme_bw() +
+  ggtitle("Biological System by Race") +
+  # xlab("finalSystem") +
+  ylab("Count") +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
 
 meltRace %>% drop_na(c(finalOrgan, finalRace)) %>%
   ggplot(., aes(x = finalOrgan, y= value, fill=finalRace)) +
-    geom_bar(stat="identity") +
-    theme_bw() +
-    ggtitle("Organ by Race") +
-    # xlab("finalSystem") +
-    ylab("Count") +
-    scale_fill_viridis(discrete=T, na.value="grey50") +
-    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-    theme(legend.position="bottom")
+  geom_bar(stat="identity") +
+  theme_bw() +
+  ggtitle("Organ by Race") +
+  # xlab("finalSystem") +
+  ylab("Count") +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
 
 meltRace %>% drop_na(c(finalOrgan, finalSystem, finalRace)) %>%
-ggplot(., aes(x = finalOrgan, y= value, color=finalRace, fill=finalRace)) +
+  ggplot(., aes(x = finalOrgan, y= value, color=finalRace, fill=finalRace)) +
   geom_jitter(size = 4, width=0.2) +
   theme_bw() +
   ggtitle("Organ by race") +
@@ -240,7 +251,7 @@ ggplot(., aes(x = finalOrgan, y= value, color=finalRace, fill=finalRace)) +
   theme(legend.position = "bottom")
 
 meltRace %>% drop_na(c(finalSystem, finalRace)) %>%
-ggplot(., aes(x = finalSystem, y= value, color=finalRace, fill=finalRace)) +
+  ggplot(., aes(x = finalSystem, y= value, color=finalRace, fill=finalRace)) +
   geom_jitter(size = 4, width=0.2) +
   theme_bw() +
   ggtitle("System by race") +
