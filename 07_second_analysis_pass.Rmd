@@ -21,7 +21,7 @@ library(tidyverse)
 library(viridis)
 options(device = "quartz")
 
-allSRAFinal <- readRDS("allSRAFinalTissuesCentersDisease.rds")
+allSRAFinal <- readRDS("")
 ```
 
 We want to look at the following things:

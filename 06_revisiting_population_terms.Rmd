@@ -176,8 +176,8 @@ allSRAFinal$strictRace <- popRaceNew[match(allSRAFinal$mergedRace, popRaceNew$Te
 table(allSRAFinal$strictGeography)
 table(allSRAFinal$strictRace)
 
-table(!is.na(allSRAFinal$strictGeography), !is.na(allSRAFinal$mergedGeography))
-table(!is.na(allSRAFinal$strictRace), !is.na(allSRAFinal$mergedRace))
+# table(!is.na(allSRAFinal$strictGeography), !is.na(allSRAFinal$mergedGeography))
+# table(!is.na(allSRAFinal$strictRace), !is.na(allSRAFinal$mergedRace))
 ```
 
 Now we have two problems - terms in the wrong column, and also double labels. Let's start with things that had race/geography info in the relevant columns before the recode, but weren't parsed correctly, ie we decided it was racial when it was coded as ethnicity or viceversa. 
@@ -444,6 +444,85 @@ allSRAFinal %>% group_by(finalCountry, strictestRace) %>% summarise(n = sum(!is.
 
 ```
 
+Now we flip the axes and the groupings:
+```{r country-of-sequencing-3, out.width="100%"}
+allSRAFinal %>% group_by(finalCountry, finalGeography) %>% summarise(n = sum(!is.na(finalGeography))) %>% drop_na(finalGeography) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=finalGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("finalGeography across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictGeography) %>% summarise(n = sum(!is.na(strictGeography))) %>% drop_na(strictGeography) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=strictGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictGeography across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictestGeography) %>% summarise(n = sum(!is.na(strictestGeography))) %>% drop_na(strictestGeography) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=strictestGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictestGeography across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+```
+
+### Race:
+
+```{r country-of-sequencing-4, out.width="100%"}
+
+allSRAFinal %>% group_by(finalCountry, finalRace) %>% summarise(n = sum(!is.na(finalRace))) %>% drop_na(finalRace) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=finalRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("finalRace across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictRace) %>% summarise(n = sum(!is.na(strictRace))) %>% drop_na(strictRace) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=strictRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictRace across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictestRace) %>% summarise(n = sum(!is.na(strictestRace))) %>% drop_na(strictestRace) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=strictestRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictestRace across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+```
 
 ## 3: How many studies end up with terms in multiple categories?
 
@@ -504,35 +583,35 @@ saveRDS(allSRAFinal, file="20240704_allSRAFinal.rds")
 Stopping here for now - I am feeling like `strictest` is my favourite, actually. I had previously looked at how to resolve some of the conflicted studies (at the `final` level, there's some new ones in the `strict` level), but hadn't implemented it:
 
 #### Studies where the assignment was originally in the race columns. Bolded ones are easy to update. 
-1. *SRP072417*: Racial but distinguishes between South Asian and Asian (should just collapse.)
-1. *SRP102952*: Caucasian when the rest is clearly from ISEA, should be geography. 
+1. **SRP072417**: Racial but distinguishes between South Asian and Asian (should just collapse.)
+1. **SRP102952**: Caucasian when the rest is clearly from ISEA, should be geography. 
 1. SRP188296: Single Arabic individual
 1. SRP219483: Single Asian Indian indivual, but distinguishes between African American and Black (sigh)
 1. SRP226691: Single Caucasian and a lot of Japanese?
-1. *SRP268711*: Asian (Nepali) should be race:Asian?
+1. **SRP268711**: Asian (Nepali) should be race:Asian?
 1. SRP300191: Eastern African distinct from African American
 1. SRP303646: single Indian individual (and two ways of mispelling Caucasian)
 
 #### Studies where the assignment was originally in the geography/ancestry columns. Bolded ones are easy to update. 
 1. DRP001797: Mixture of terms - Arabic, Japanese, and census terms. 
-1. *ERP116722*: Distinct African groups and 'other' which is getting parsed incorrectly. Should be all geography.
+1. **ERP116722**: Distinct African groups and 'other' which is getting parsed incorrectly. Should be all geography.
 1. ERP117085: Black vs mixed geography; comes from UCL so would move 100% to ethnicity
-1. *SRP063355*: Should be all race. 
-1. *SRP070663*: Should be all race.
-1. *SRP073813*: Should be all race.
+1. **SRP063355**: Should be all race. 
+1. **SRP070663**: Should be all race.
+1. **SRP073813**: Should be all race.
 1. SRP074739: 5 South Indian inds, not clear. 
 1. SRP114762: Black and white... should keep it consistent not matter what.
-1. *SRP116913*: Should be all race. 
+1. **SRP116913**: Should be all race. 
 1. SRP118614: IDEK
 1. SRP125882: IDEK 
 1. SRP172694, SRP274641: Should be race minus the hispanic sample - AsianPacific Islander is messing things up, should be Pacific islander. **This one is annoying to fix, so doing it later**
 1. SRP190479, SRP212343, SRP212369, SRP212370: Middle Eastern keeping it from being race. 
 1. SRP216558: IDEK
-1. *SRP245400*: Should be all race minus the hispanic.
-1. *SRP251118*: Probably race. 
+1. **SRP245400**: Should be all race minus the hispanic.
+1. **SRP251118**: Probably race. 
 1. SRP283115: AsianPacific should probably be Pacific Islander. **This one is annoying to fix, so doing it later**
 1. SRP303641: North African otherwise race/hispanic. 
-1. *SRP324614*: Should be race. 
+1. **SRP324614**: Should be race. 
 1. SRP363798: Caucasian should go to Europe?
 1. SRP377781: IDEK
 1. SRP388678: IDEK
