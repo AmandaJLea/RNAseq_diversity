@@ -35,7 +35,7 @@ Some of this repeats an earlier script, `04_first_analysis_pass.Rmd`, but we kee
 
 ## Who is being sequenced?
 
-```{r plot-clean-geography}
+```{r plot-clean-geography, out.width="100%"}
 sampleGeography <- allSRAFinal %>% count(SRA.Study, finalGeography) %>% drop_na(finalGeography)
 sampleRace <- allSRAFinal %>% count(SRA.Study, finalRace) %>% drop_na(finalRace)
 meltSampleGeography <- melt(sampleGeography)
@@ -96,7 +96,7 @@ ggplot(meltSampleRace, aes(x = finalRace, y=value,fill=finalRace)) +
 
 ## 2. And by who? Where is the sequencing happening?
 
-```{r plot-clean-country}
+```{r plot-clean-country, out.width="100%"}
 geographyClean <- allSRAFinal %>% drop_na(finalGeography)
 raceClean <- allSRAFinal %>% drop_na(finalRace)
 
@@ -108,7 +108,9 @@ ggplot(geographyClean, aes(x = finalCountry, fill = finalGeography)) +
   ylab("Samples (log10)") +
   scale_y_continuous(trans='log10') +
   scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "bottom")
+
 
 ggplot(raceClean, aes(x = finalCountry, fill=finalRace)) +
   geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
@@ -118,12 +120,13 @@ ggplot(raceClean, aes(x = finalCountry, fill=finalRace)) +
   ylab("Samples (log10)") +
   scale_y_continuous(trans='log10') +
   scale_fill_viridis(discrete=T, na.value="grey50") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "bottom")
 ```
 
 More clearly, who is sequencing each pop descriptor?
 
-```{r plot-clean-country-2}
+```{r plot-clean-country-2, out.width="100%"}
 ggplot(geographyClean, aes(fill = finalCountry, x = finalGeography)) +
   geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
   theme_bw() +
@@ -132,7 +135,8 @@ ggplot(geographyClean, aes(fill = finalCountry, x = finalGeography)) +
   ylab("Samples (log10)") +
   scale_y_continuous(trans='log10') +
   # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "bottom")
 
 ggplot(raceClean, aes(fill = finalCountry, x = finalRace)) +
   geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
@@ -142,13 +146,13 @@ ggplot(raceClean, aes(fill = finalCountry, x = finalRace)) +
   ylab("Samples (log10)") +
   scale_y_continuous(trans='log10') +
   # scale_fill_viridis(discrete=T, na.value="grey50") +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "bottom")
 ```
 
 ## 3. What tissues are they sequencing?
 
-
-```{r first-pass-tissue}
+```{r first-pass-tissue, out.width="100%"}
 # First we focus on population descriptors:
 bigGeographySummary <- allSRAFinal %>% count(SRA.Study, finalGeography, finalSystem, finalOrgan)
 bigRaceSummary <- allSRAFinal %>% count(SRA.Study, finalRace, finalSystem, finalOrgan)
@@ -254,7 +258,7 @@ ggplot(., aes(x = finalSystem, y= value, color=finalRace, fill=finalRace)) +
 
 We're also interested in how diverse a given study is, and how many studies include samples from each descriptor. We can easily calculate all of that too, although it is hard to see visually. 
 
-```{r geography-by-study, include=T, eval=T}
+```{r geography-by-study, include=T, eval=T, out.width="100%"}
 geographyStudy <- allSRAFinal %>% count(SRA.Study, finalGeography) %>% drop_na(finalGeography)
 
 # How many studies with any sort of Geography info?
@@ -316,7 +320,7 @@ These make sense! The Singaporean cohorts will be the three main Geography: (Sou
 
 Anyhow, now we do the same for race:
 
-```{r race-by-study, include=T, eval=T}
+```{r race-by-study, include=T, eval=T, out.width="100%"}
 raceStudy <- allSRAFinal %>% count(SRA.Study, finalRace) %>% drop_na(finalRace)
 
 # How many studies with any sort of Race info?
