@@ -576,42 +576,26 @@ try(allSRAFinal %>% group_by(SRA.Study, strictestGeography, strictestRace) %>%
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     theme(legend.position="bottom"))
 
+```
+
+Stopping here for now - I am feeling like `strictest` is my favourite, actually. I had previously looked at how to resolve some of the conflicted studies (at the `final` level, there's some new ones in the `strict` level), but hadn't implemented it...
+
+But now we gotta deal with one final hurdle: hispanic:
+
+### Coding hispanics one last time:
+
+```{r hispanic-coding-1}
+# How many studies have hispanic info and race or ethnicity info?
+
+allSRAFinal %>% count(strictestRace, hispanic)
+allSRAFinal %>% count(strictestGeography, hispanic)
+allSRAFinal %>% count(hispanic, strictestRace)
+
+# Not sure if this is due to how we coded it, but that's pleasant. Except, what to do with the people with two labels??
+
 saveRDS(allSRAFinal, file="20240704_allSRAFinal.rds")
+
 
 ```
 
-Stopping here for now - I am feeling like `strictest` is my favourite, actually. I had previously looked at how to resolve some of the conflicted studies (at the `final` level, there's some new ones in the `strict` level), but hadn't implemented it:
 
-#### Studies where the assignment was originally in the race columns. Bolded ones are easy to update. 
-1. **SRP072417**: Racial but distinguishes between South Asian and Asian (should just collapse.)
-1. **SRP102952**: Caucasian when the rest is clearly from ISEA, should be geography. 
-1. SRP188296: Single Arabic individual
-1. SRP219483: Single Asian Indian indivual, but distinguishes between African American and Black (sigh)
-1. SRP226691: Single Caucasian and a lot of Japanese?
-1. **SRP268711**: Asian (Nepali) should be race:Asian?
-1. SRP300191: Eastern African distinct from African American
-1. SRP303646: single Indian individual (and two ways of mispelling Caucasian)
-
-#### Studies where the assignment was originally in the geography/ancestry columns. Bolded ones are easy to update. 
-1. DRP001797: Mixture of terms - Arabic, Japanese, and census terms. 
-1. **ERP116722**: Distinct African groups and 'other' which is getting parsed incorrectly. Should be all geography.
-1. ERP117085: Black vs mixed geography; comes from UCL so would move 100% to ethnicity
-1. **SRP063355**: Should be all race. 
-1. **SRP070663**: Should be all race.
-1. **SRP073813**: Should be all race.
-1. SRP074739: 5 South Indian inds, not clear. 
-1. SRP114762: Black and white... should keep it consistent not matter what.
-1. **SRP116913**: Should be all race. 
-1. SRP118614: IDEK
-1. SRP125882: IDEK 
-1. SRP172694, SRP274641: Should be race minus the hispanic sample - AsianPacific Islander is messing things up, should be Pacific islander. **This one is annoying to fix, so doing it later**
-1. SRP190479, SRP212343, SRP212369, SRP212370: Middle Eastern keeping it from being race. 
-1. SRP216558: IDEK
-1. **SRP245400**: Should be all race minus the hispanic.
-1. **SRP251118**: Probably race. 
-1. SRP283115: AsianPacific should probably be Pacific Islander. **This one is annoying to fix, so doing it later**
-1. SRP303641: North African otherwise race/hispanic. 
-1. **SRP324614**: Should be race. 
-1. SRP363798: Caucasian should go to Europe?
-1. SRP377781: IDEK
-1. SRP388678: IDEK

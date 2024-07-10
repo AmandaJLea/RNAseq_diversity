@@ -51,8 +51,12 @@ scale_color_geography <- function(...){
         ...
     )
 }
-
 allSRAFinal$strictestGeography <- factor(allSRAFinal$strictestGeography, levels = c("Subsaharan Africa", "North Africa and\nWestern Asia", "Europe", "South Asia", "Southeast Asia", "East Asia", "Asia (NOS)", "Oceania", "Americas", "Multiple", "Other"))
+
+allSRAFinal %>% count(strictestRace)
+allSRAFinal$strictestRace <- coalesce(allSRAFinal$strictestRace, allSRAFinal$hispanic)
+allSRAFinal %>% count(strictestRace)
+allSRAFinal <- allSRAFinal %>% mutate(strictestRace = na_if(strictestRace, "non.hispanic")) 
 
 ```
 
@@ -97,7 +101,7 @@ geoStudy <- ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fill
   geom_boxplot(width=0.8, outlier.shape = NA) +
   geom_jitter(size=0.5, width=0.2, color="#333333") +
   theme_bw() +
-  ggtitle("Submitted descriptor (ancestral/geographic origin)") +
+  ggtitle("Submitted descriptor\n(ancestral/geographic origin)") +
   xlab("") +
   ylab("Samples per study") +
   # scale_y_continuous(trans='log10') +
@@ -109,7 +113,7 @@ raceStudy <- ggplot(meltSampleRace, aes(x = strictestRace, y=value,fill=strictes
   geom_boxplot(width=0.8, outlier.shape = NA) +
   geom_jitter(size=0.5, width=0.2, color="#333333") +
   theme_bw() +
-  ggtitle("Submitted descriptor (US Census race term)") +
+  ggtitle("Submitted descriptor\n(US Census race term)") +
   xlab("") +
   ylab("Samples per study") +
   # scale_y_continuous(trans='log10') +
@@ -130,7 +134,7 @@ geoCountry <- ggplot(geographyClean, aes(x = finalCountry, fill = strictestGeogr
   ggtitle("SRA Depositor Country") +
   xlab("") +
   ylab("Samples") +
-  # scale_y_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
   scale_fill_geography(name="Population\nDescriptor") +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   # theme(legend.position = "bottom")
@@ -142,7 +146,7 @@ raceCountry <- ggplot(raceClean, aes(x = finalCountry, fill=strictestRace)) +
   ggtitle("SRA Depositor Country") +
   xlab("") +
   ylab("Samples") +
-  # scale_y_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
   scale_fill_brewer(palette="Dark2", name="US Census\nRacial Term") +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   # theme(legend.position = "bottom")
@@ -275,6 +279,12 @@ pdf(file="bar_vs_alluvial.pdf", height=9, width=9)
   geoCountry + geographyAlluvial + raceCountry + raceAlluvial +
     plot_layout(nrow=2)
 dev.off()
+
+pdf(file="selections.pdf", height=9, width=9)
+  allGeo + geoCountry + allRace + raceCountry +
+    plot_layout(nrow=2, widths = c(1, 2))
+dev.off()
+
 ```
 
 Well that's nice!
@@ -311,7 +321,7 @@ ggplot(data = .,
   theme(legend.position = "bottom")
 
 
-pdf(file="_tissue_disease_alluvial.pdf")
+pdf(file="tissue_disease_alluvial.pdf")
   geoTissueAlluvial + raceTissueAlluvial +
     plot_layout(nrow=2)
 dev.off()
