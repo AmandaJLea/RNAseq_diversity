@@ -190,6 +190,7 @@ allSRAFinal %>% count(finalCountry, worldBank)
 
 # Some statistics:
 allSRAFinal %>% filter(!is.na(worldBank)) %>% count(worldBank) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
+allSRAFinal %>% filter(!is.na(finalCountry)) %>% count(finalCountry) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 
 allSRAFinal %>% filter(!is.na(strictestGeography)) %>% count(worldBank) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 allSRAFinal %>% filter(!is.na(strictestRace)) %>% count(worldBank) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
@@ -202,34 +203,38 @@ Let's attempt some alluvial plot and call it quits:
 
 ```{r plot-clean-country-4, out.width="100%", echo=F}
 worldBankGeoAlluvial <- allSRAFinal %>% count(strictestGeography, worldBank) %>% drop_na(c(strictestGeography, worldBank)) %>%
-ggplot(data = .,
-       aes(axis1 = worldBank, axis2 = strictestGeography, y = n)) +
-  scale_x_discrete(limits = c("World Bank classification", "Population\nDescriptor"), expand = c(.2, .05)) +
-  geom_alluvium(aes(fill = strictestGeography)) +
-  scale_fill_geography(name="Population\nDescriptor") +
-  geom_stratum(width=1/3) +
-  ylab("Samples") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
-  coord_flip() +
-  theme_minimal() +
-  theme(legend.position = "none")
+  ggplot(data = .,
+         aes(axis1 = worldBank, axis2 = strictestGeography, y = n)) +
+    scale_x_discrete(limits = c("World Bank classification", "Population\nDescriptor"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = strictestGeography)) +
+    scale_fill_geography(name="Population\nDescriptor") +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+    coord_flip() +
+    theme_minimal() +
+    theme(legend.position = "none")
 
 worldBankRaceAlluvial <- allSRAFinal %>% count(strictestRace, worldBank) %>% drop_na(c(strictestRace, worldBank)) %>%
-ggplot(data = .,
-       aes(axis1 = worldBank, axis2 = strictestRace, y = n)) +
-  scale_x_discrete(limits = c("SRA Depositor\nCountry", "US Census Racial Term"), expand = c(.2, .05)) +
-  geom_alluvium(aes(fill = strictestRace)) +
-  scale_fill_race(name="US Census\nTerm)") +
-  geom_stratum(width=1/3) +
-  ylab("Samples") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
-  theme_minimal() +
-  theme(legend.position = "none")
+  ggplot(data = .,
+         aes(axis1 = worldBank, axis2 = strictestRace, y = n)) +
+    scale_x_discrete(limits = c("SRA Depositor\nCountry", "US Census Racial Term"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = strictestRace)) +
+    scale_fill_race(name="US Census\nTerm)") +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+    geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+    theme_minimal() +
+    theme(legend.position = "none")
 
 # These are actually really uninformative, so let's go back to trying to make the ones at the country level and just make them pretty. 
 
+# what about a figure 2 where samples are labelled by country on the one side, and by simply has race or geography on the other? 
 
 
+  
+  
 
 ```
 ## 3. What tissues are they sequencing?
