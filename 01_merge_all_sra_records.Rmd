@@ -105,7 +105,7 @@ dim(sraPre)
 newTerms <- names(sraPre)
 
 #How many terms in total?
-length(unique(c(oldTerms, newTerms))
+length(unique(c(oldTerms, newTerms)))
 
 # Missingness checks don't work here (out of ram) so we move straight to looking at some column names and labels:
 names(sraPre)[grep("sample", names(sraPre), ignore.case=T)]
