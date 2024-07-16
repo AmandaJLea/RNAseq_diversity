@@ -20,6 +20,7 @@ library(tidyverse)
 library(patchwork)
 library(ggalluvial)
 library(RColorBrewer)
+library(ggrepel)
 options(device = "quartz")
 
 allSRAFinal <- readRDS("20240704_allSRAFinal.rds")
@@ -78,7 +79,7 @@ scale_fill_race <- function(...){
 geographyClean <- allSRAFinal %>% drop_na(strictestGeography) %>% count(strictestGeography)
 raceClean <- allSRAFinal %>% drop_na(strictestRace) %>% count(strictestRace)
 
-allGeo <- ggplot(geographyClean, aes(x = strictestGeography, y = n, fill = strictestGeography)) +
+ggplot(geographyClean, aes(x = strictestGeography, y = n, fill = strictestGeography)) +
   geom_bar(stat="identity") +
   theme_bw() +
   ggtitle("Submitted descriptor (ancestral/geographic origin)") +
@@ -89,7 +90,7 @@ allGeo <- ggplot(geographyClean, aes(x = strictestGeography, y = n, fill = stric
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position="none")
 
-allRace <- ggplot(raceClean, aes(x = strictestRace, y = n, fill=strictestRace)) +
+ggplot(raceClean, aes(x = strictestRace, y = n, fill=strictestRace)) +
   geom_bar(stat="identity") +
   theme_bw() +
   ggtitle("Submitted descriptor (US Census race term)") +
@@ -110,7 +111,7 @@ sampleRace <- allSRAFinal %>% count(SRA.Study, strictestRace) %>% drop_na(strict
 meltSampleGeography <- melt(sampleGeography)
 meltSampleRace <- melt(sampleRace)
 
-geoStudy <- ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fill=strictestGeography)) +
+ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fill=strictestGeography)) +
   geom_boxplot(width=0.8, outlier.shape = NA) +
   geom_jitter(size=0.5, width=0.2, color="#333333") +
   theme_bw() +
@@ -122,7 +123,7 @@ geoStudy <- ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fill
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position = "none")
 
-raceStudy <- ggplot(meltSampleRace, aes(x = strictestRace, y=value,fill=strictestRace)) +
+ggplot(meltSampleRace, aes(x = strictestRace, y=value,fill=strictestRace)) +
   geom_boxplot(width=0.8, outlier.shape = NA) +
   geom_jitter(size=0.5, width=0.2, color="#333333") +
   theme_bw() +
@@ -144,7 +145,7 @@ allSRAFinal %>% filter(!is.na(strictestRace)) %>% count(strictestRace) %>% mutat
 geographyClean <- allSRAFinal %>% drop_na(strictestGeography)
 raceClean <- allSRAFinal %>% drop_na(strictestRace)
 
-geoCountry <- ggplot(geographyClean, aes(x = finalCountry, fill = strictestGeography)) +
+ggplot(geographyClean, aes(x = finalCountry, fill = strictestGeography)) +
   geom_bar(position = position_dodge2(width = 0.9, preserve = "single")) +
   theme_bw() +
   ggtitle("SRA Depositor Country") +
@@ -156,7 +157,7 @@ geoCountry <- ggplot(geographyClean, aes(x = finalCountry, fill = strictestGeogr
   # theme(legend.position = "bottom")
   theme(legend.position = "none")
 
-raceCountry <- ggplot(raceClean, aes(x = finalCountry, fill=strictestRace)) +
+ggplot(raceClean, aes(x = finalCountry, fill=strictestRace)) +
   geom_bar(position = position_dodge2(width = 0.9, preserve = "single")) +
   theme_bw() +
   ggtitle("SRA Depositor Country") +
@@ -186,7 +187,7 @@ allSRAFinal <- allSRAFinal %>%
   mutate(worldBank = if_else(is.na(worldBank), "High income", worldBank)) %>%
   mutate(worldBank = if_else(is.na(finalCountry), NA, worldBank ))
 
-allSRAFinal %>% count(finalCountry, worldBank)
+# allSRAFinal %>% count(finalCountry, worldBank)
 
 # Some statistics:
 allSRAFinal %>% filter(!is.na(worldBank)) %>% count(worldBank) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
@@ -202,7 +203,7 @@ allSRAFinal %>% filter(!is.na(strictestRace)) %>% count(finalCountry) %>% mutate
 Let's attempt some alluvial plot and call it quits:
 
 ```{r plot-clean-country-4, out.width="100%", echo=F}
-worldBankGeoAlluvial <- allSRAFinal %>% count(strictestGeography, worldBank) %>% drop_na(c(strictestGeography, worldBank)) %>%
+allSRAFinal %>% count(strictestGeography, worldBank) %>% drop_na(c(strictestGeography, worldBank)) %>%
   ggplot(data = .,
          aes(axis1 = worldBank, axis2 = strictestGeography, y = n)) +
     scale_x_discrete(limits = c("World Bank classification", "Population\nDescriptor"), expand = c(.2, .05)) +
@@ -210,15 +211,14 @@ worldBankGeoAlluvial <- allSRAFinal %>% count(strictestGeography, worldBank) %>%
     scale_fill_geography(name="Population\nDescriptor") +
     geom_stratum(width=1/3) +
     ylab("Samples") +
-    geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
-    coord_flip() +
+    geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
     theme_minimal() +
     theme(legend.position = "none")
 
-worldBankRaceAlluvial <- allSRAFinal %>% count(strictestRace, worldBank) %>% drop_na(c(strictestRace, worldBank)) %>%
+allSRAFinal %>% count(strictestRace, worldBank) %>% drop_na(c(strictestRace, worldBank)) %>%
   ggplot(data = .,
          aes(axis1 = worldBank, axis2 = strictestRace, y = n)) +
-    scale_x_discrete(limits = c("SRA Depositor\nCountry", "US Census Racial Term"), expand = c(.2, .05)) +
+    scale_x_discrete(limits = c("World Bank classification", "US Census Racial Term"), expand = c(.2, .05)) +
     geom_alluvium(aes(fill = strictestRace)) +
     scale_fill_race(name="US Census\nTerm)") +
     geom_stratum(width=1/3) +
@@ -229,15 +229,106 @@ worldBankRaceAlluvial <- allSRAFinal %>% count(strictestRace, worldBank) %>% dro
     theme(legend.position = "none")
 
 # These are actually really uninformative, so let's go back to trying to make the ones at the country level and just make them pretty. 
+allSRAFinal %>% count(strictestGeography, finalCountry) %>% drop_na(c(strictestGeography, finalCountry)) %>%
+  ggplot(data = .,
+         aes(axis1 = finalCountry, axis2 = strictestGeography, y = n)) +
+    scale_x_discrete(limits = c("SRA Depositor\nCountry", "Population\nDescriptor"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = strictestGeography)) +
+    scale_fill_geography(name="Population\nDescriptor") +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+    theme_minimal() +
+    theme(legend.position = "none")
 
-# what about a figure 2 where samples are labelled by country on the one side, and by simply has race or geography on the other? 
+allSRAFinal %>% count(strictestRace, finalCountry) %>% drop_na(c(strictestRace, finalCountry)) %>%
+  ggplot(data = .,
+         aes(axis1 = finalCountry, axis2 = strictestRace, y = n)) +
+    scale_x_discrete(limits = c("SRA Depositor\nCountry", "US Census Racial Term"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = strictestRace)) +
+    scale_fill_race(name="US Census\nTerm)") +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+    geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+    theme_minimal() +
+    theme(legend.position = "none")
 
+# This is also not great... what if we grouped them by world bank economic group?
+allSRAFinal$worldRegion <- worldBank[match(allSRAFinal$finalCountry, worldBank$Economy),]$Region
+# allSRAFinal %>% count(finalCountry, worldRegion)
+
+# Once again we gotta add some manually...
+allSRAFinal <- allSRAFinal %>% 
+  mutate(worldRegion = if_else(grepl("Russia|Slovakia", finalCountry), "Europe & Central Asia", worldRegion)) %>%
+  mutate(worldRegion = if_else(grepl("South Korea|Taiwan", finalCountry), "East Asia & Pacific", worldRegion)) %>%
+  mutate(worldRegion = if_else(grepl("USA", finalCountry), "North America", worldRegion)) %>%
+  as.data.frame()
+
+allSRAFinal %>% filter(!is.na(strictestGeography)) %>% count(worldRegion) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
+allSRAFinal %>% filter(!is.na(strictestRace)) %>% count(worldRegion) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
+allSRAFinal %>% count(worldRegion) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
+# allSRAFinal %>% count(finalCountry, worldRegion)
+allSRAFinal %>% count(strictestGeography, worldRegion) %>% drop_na(c(strictestGeography, worldRegion)) %>%
+  ggplot(data = .,
+         aes(axis1 = worldRegion, axis2 = strictestGeography, y = n)) +
+    scale_x_discrete(limits = c("SRA Depositor\nRegion", "Population\nDescriptor"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = strictestGeography)) +
+    scale_fill_geography(name="Population\nDescriptor") +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+allSRAFinal %>% count(strictestRace, worldRegion) %>% drop_na(c(strictestRace, worldRegion)) %>%
+  ggplot(data = .,
+         aes(axis1 = worldRegion, axis2 = strictestRace, y = n)) +
+    scale_x_discrete(limits = c("SRA Depositor\nRegion", "US Census Racial Term"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = strictestRace)) +
+    scale_fill_race(name="US Census\nTerm)") +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+    geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+### And finally... does it have any kind of description??
+allSRAFinal <- allSRAFinal %>% 
+  mutate(hasDescriptor = if_else(is.na(finalRace), "Geographic", "Racial"))
+
+# Useless at this resolution
+allSRAFinal %>% count(finalCountry, hasDescriptor) %>%
+  ggplot(data = .,
+         aes(axis1 = finalCountry, axis2 = hasDescriptor, y = n)) +
+    scale_x_discrete(limits = c("SRA Depositor\nCountry", "Descriptor\nType"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = hasDescriptor)) +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+    geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+
+allSRAFinal %>% count(worldRegion, hasDescriptor) %>%
+  ggplot(data = .,
+         aes(axis1 = worldRegion, axis2 = hasDescriptor, y = n)) +
+    scale_x_discrete(limits = c("SRA Depositor\nRegion", "Descriptor\nType"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = hasDescriptor)) +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+    geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+    theme_minimal() +
+    theme(legend.position = "none")
 
   
-  
-
 ```
+
 ## 3. What tissues are they sequencing?
+
 
 ```{r first-pass-tissue, out.width="100%"}
 # First we focus on population descriptors:
@@ -249,7 +340,7 @@ raceSummary <- allSRAFinal %>% count(strictestRace, finalSystem, finalOrgan, fin
 meltGeography <- melt(geographySummary)
 meltRace <- melt(raceSummary)
 
-geoSystem <- meltGeography %>% drop_na(c(finalSystem, strictestGeography)) %>%
+meltGeography %>% drop_na(c(finalSystem, strictestGeography)) %>%
   ggplot(., aes(x = finalSystem, y = value, fill = strictestGeography)) +
   geom_bar(stat="identity") +
   ggtitle("Reported biological system") +
@@ -261,7 +352,7 @@ geoSystem <- meltGeography %>% drop_na(c(finalSystem, strictestGeography)) %>%
   # theme(legend.position = "bottom")
   theme(legend.position = "none")
 
-geoOrgan <- meltGeography %>% drop_na(c(finalOrgan, strictestGeography)) %>%
+meltGeography %>% drop_na(c(finalOrgan, strictestGeography)) %>%
   ggplot(., aes(x = finalOrgan, y = value, fill = strictestGeography)) +
   geom_bar(stat="identity") +
   theme_bw() +
@@ -272,7 +363,7 @@ geoOrgan <- meltGeography %>% drop_na(c(finalOrgan, strictestGeography)) %>%
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position = "bottom")
 
-geoDisease <- meltGeography %>% drop_na(c(finalDisease, strictestGeography)) %>%
+meltGeography %>% drop_na(c(finalDisease, strictestGeography)) %>%
   ggplot(., aes(x = finalDisease, y = value, fill = strictestGeography)) +
   geom_bar(stat="identity") +
   theme_bw() +
@@ -285,7 +376,7 @@ geoDisease <- meltGeography %>% drop_na(c(finalDisease, strictestGeography)) %>%
   theme(legend.position = "none")
 
 
-raceSystem <- meltRace %>% drop_na(c(finalSystem, strictestRace)) %>%
+meltRace %>% drop_na(c(finalSystem, strictestRace)) %>%
   ggplot(., aes(x = finalSystem, y = value, fill = strictestRace)) +
   geom_bar(stat="identity") +
   theme_bw() +
@@ -297,7 +388,7 @@ raceSystem <- meltRace %>% drop_na(c(finalSystem, strictestRace)) %>%
   # theme(legend.position = "bottom")
   theme(legend.position = "none")
 
-raceOrgan <- meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>%
+meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>%
   ggplot(., aes(x = finalOrgan, y = value, fill = strictestRace)) +
   geom_bar(stat="identity") +
   theme_bw() +
@@ -308,7 +399,7 @@ raceOrgan <- meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>%
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position = "bottom")
 
-raceDisease <- meltRace %>% drop_na(c(finalDisease, strictestRace)) %>%
+meltRace %>% drop_na(c(finalDisease, strictestRace)) %>%
   ggplot(., aes(x = finalDisease, y = value, fill = strictestRace)) +
   geom_bar(stat="identity") +
   theme_bw() +
@@ -324,65 +415,74 @@ raceDisease <- meltRace %>% drop_na(c(finalDisease, strictestRace)) %>%
 
 ```{r arrange-plots, out.width="100%"}
 
-# pdf(file="all_geography_plots.pdf", height=9, width=9)
-  allGeo + geoCountry + geoStudy + geoSystem + geoOrgan + geoDisease +
-    plot_layout(nrow=2)
-# dev.off()
-
-# pdf(file="all_race_plots.pdf", height=9, width=9)
-  allRace + raceCountry + raceStudy + raceSystem + raceOrgan + raceDisease +
-    plot_layout(nrow=2)
-# dev.off()
-
-# pdf(file="bar_vs_alluvial.pdf", height=9, width=9)
-#   geoCountry + geographyAlluvial + raceCountry + raceAlluvial +
-#     plot_layout(nrow=2)
-# dev.off()
-
-# pdf(file="selections.pdf", height=9, width=9)
-  allGeo + geoCountry + allRace + raceCountry +
-    plot_layout(nrow=2, widths = c(1, 2))
-# dev.off()
+  # allGeo + geoCountry + geoStudy + geoSystem + geoOrgan + geoDisease +
+  #   plot_layout(nrow=)
+  # 
+  # allRace + raceCountry + raceStudy + raceSystem + raceOrgan + raceDisease +
+  #   plot_layout(nrow=2)
+  # 
+  # allGeo + geoCountry + allRace + raceCountry +
+  #   plot_layout(nrow=2, widths = c(1, 2))
 
 ```
 
-Well that's nice!
-
-Now let's try to tease out the relationship between things a bit better, even if the knit file is really ugly
 
 ## 4. Attempting alluvial plots...
 
 For these (and only for these!), we're gonna set `cancer` in either `finalOrgan` or `finalSystem` to NA, because otherwise the data gets messy. Worth discussing what to do in general/above. 
 
 ```{r attempt-alluvial-1, out.width="100%"}
-geoTissueAlluvial <- geographySummary %>% filter(!grepl('cancer', finalSystem)) %>% filter(!grepl('cancer', finalOrgan)) %>% drop_na(c(strictestGeography, finalSystem, finalOrgan, finalDisease)) %>%
-ggplot(data = .,
-       aes(axis1 = finalSystem, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
-  scale_x_discrete(limits = c("Biological system", "Organ", "Disease"), expand = c(.2, .05)) +
+allSRAFinal %>% count(strictestGeography, worldRegion, finalOrgan, finalDisease) %>% filter(!grepl('cancer', finalOrgan)) %>% drop_na(c(strictestGeography, worldRegion, finalOrgan, finalDisease)) %>%
+  ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Depositor\nRegion", "Organ", "Disease"), expand = c(.2, .05)) +
   geom_alluvium(aes(fill = strictestGeography)) +
   scale_fill_geography(name="Population\nDescriptor") +
   geom_stratum(width=1/3) +
   ylab("Samples") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
   theme_minimal() +
   theme(legend.position = "bottom")
 
-raceTissueAlluvial <- raceSummary %>% filter(!grepl('cancer', finalSystem)) %>% filter(!grepl('cancer', finalOrgan)) %>% drop_na(c(strictestRace, finalSystem, finalOrgan, finalDisease)) %>%
-ggplot(data = .,
-       aes(axis1 = finalSystem, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
-  scale_x_discrete(limits = c("Biological system", "Organ", "Disease"), expand = c(.2, .05)) +
+allSRAFinal %>% count(strictestRace, worldRegion, finalOrgan, finalDisease) %>% filter(!grepl('cancer', finalOrgan)) %>% drop_na(c(strictestRace, worldRegion, finalOrgan, finalDisease)) %>%
+  ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Depositor\nRegion", "Organ", "Disease"), expand = c(.2, .05)) +
   geom_alluvium(aes(fill = strictestRace)) +
-  scale_fill_race(name="US Census\nTerm)") +
+  scale_fill_race(name="US Census\nTerm") +
   geom_stratum(width=1/3) +
   ylab("Samples") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
   theme_minimal() +
   theme(legend.position = "bottom")
 
-# pdf(file="tissue_disease_alluvial.pdf")
-  geoTissueAlluvial + raceTissueAlluvial +
-    plot_layout(nrow=2)
-# dev.off()
+allSRAFinal %>% count(strictestGeography, worldRegion, finalSystem, finalDisease) %>% filter(!grepl('cancer', finalSystem)) %>% drop_na(c(strictestGeography, worldRegion, finalSystem, finalDisease)) %>%
+  ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalSystem, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Depositor\nRegion", "Biological\nSystem", "Disease"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = strictestGeography)) +
+  scale_fill_geography(name="Population\nDescriptor") +
+  geom_stratum(width=1/3) +
+  ylab("Samples") +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+allSRAFinal %>% count(strictestRace, worldRegion, finalSystem, finalDisease) %>% filter(!grepl('cancer', finalSystem)) %>% drop_na(c(strictestRace, worldRegion, finalSystem, finalDisease)) %>%
+  ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalSystem, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Depositor\nRegion", "Biological\nSystem", "Disease"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = strictestRace)) +
+  scale_fill_race(name="US Census\nTerm") +
+  geom_stratum(width=1/3) +
+  ylab("Samples") +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 
 ```
 
@@ -391,31 +491,15 @@ ggplot(data = .,
 ```{r alluvial-descriptors, out.width="100%", include=F, eval=F}
 
 # Let's attempt an alluvial plot and call it quits:
-onion <- allSRAFinal %>% count(finalGeography) %>% count(strictGeography) %>% count(strictestGeography) %>% drop_na(c(strictestGeography, strictGeography, finalGeography)) 
-
-
-%>%
+allSRAFinal %>% count(finalGeography, strictestGeography, finalRace, strictestRace) %>%
 ggplot(data = .,
-       aes(axis1 = finalGeography, axis2 = strictGeography, axis3 = strictestGeography, y = n)) +
+       aes(axis1 = finalGeography, axis2 = strictestGeography, axis3 = finalRace, axis4 = strictestRace, y = n)) +
   scale_x_discrete(limits = c("Original", "Strict", "Strictest"), expand = c(.2, .05)) +
   geom_alluvium(aes(fill = finalGeography)) +
-  scale_fill_brewer(palette="Set3") +
+  # scale_fill_brewer(palette="Set3") +
     geom_stratum(width=1/3) +
   ylab("Samples") +
   geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
   theme_minimal() +
   theme(legend.position = "none")
-
-raceTermsAlluvial <- allSRAFinal %>% count(strictestRace, finalCountry) %>% drop_na(c(strictestRace, finalCountry)) %>%
-ggplot(data = .,
-       aes(axis1 = finalCountry, axis2 = strictestRace, y = n)) +
-  scale_x_discrete(limits = c("SRA Depositor\nCountry", "US Census Racial Term"), expand = c(.2, .05)) +
-  geom_alluvium(aes(fill = strictestRace)) +
-  scale_fill_race(name="US Census\nTerm)") +
-  geom_stratum(width=1/3) +
-  ylab("Samples") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
-  theme_minimal() +
-  theme(legend.position = "none")
-
 ```
