@@ -39,23 +39,24 @@ allSRAFinal <- allSRAFinal %>%
 
 # Let's sort out some colour schemes... For Race we simply use Dark2 but we need to keep the mapping consistent, but for Geography we are following Alicia Martin and using a somewhat custom palette that doesn't follow anything standard, and then adding some new colours of our own; I opened a paper in Affinity and grabbed the html values and then added a couple for the new entries (Southeast Asia, Asia NOS):
 
+allSRAFinal$strictestGeography <- factor(allSRAFinal$strictestGeography, levels = c("Subsaharan Africa", "North Africa and\nWestern Asia", "Europe", "South Asia", "Southeast Asia", "East Asia", "Asia (NOS)", "Oceania", "Americas", "Multiple", "Other"))
+
 scale_fill_geography <- function(...){
     ggplot2:::manual_scale('fill',  
-        values = setNames(c('#555555', '#04C3C8', '#DB6968', '#60BC55', '#9C8DC3', '#F3D78A', '#4D97CD', '#FBC9C4', '#BCCC45', '#F8984E', '#C69C3A', '#8B96AD' ), unique(allSRAFinal$strictestGeography)), 
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
     )
 }
 
 scale_color_geography <- function(...){
-    ggplot2:::manual_scale('color', 
-        values = setNames(c('#555555', '#04C3C8', '#DB6968', '#60BC55', '#9C8DC3', '#F3D78A', '#4D97CD', '#FBC9C4', '#BCCC45', '#F8984E', '#C69C3A', '#8B96AD' ), unique(allSRAFinal$strictestGeography)), 
+    ggplot2:::manual_scale('color',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
     )
 }
-allSRAFinal$strictestGeography <- factor(allSRAFinal$strictestGeography, levels = c("Subsaharan Africa", "North Africa and\nWestern Asia", "Europe", "South Asia", "Southeast Asia", "East Asia", "Asia (NOS)", "Oceania", "Americas", "Multiple", "Other"))
 
-raceColours <- brewer.pal(8,"Set2") #8 because we don't plot NAs
+raceColours <- brewer.pal(7,"Set2") #8 because we don't plot NAs
 
-allSRAFinal$strictestRace <- coalesce(allSRAFinal$strictestRace, allSRAFinal$hispanic)
-allSRAFinal <- allSRAFinal %>% mutate(strictestRace = na_if(strictestRace, "non.hispanic"))
+# allSRAFinal$strictestRace <- coalesce(allSRAFinal$strictestRace, allSRAFinal$hispanic)
+# allSRAFinal <- allSRAFinal %>% mutate(strictestRace = na_if(strictestRace, "non.hispanic"))
 
 allSRAFinal$strictestRace <- factor(allSRAFinal$strictestRace)
 
@@ -76,8 +77,8 @@ scale_fill_race <- function(...){
 ## 1. Who is being sequenced?
 
 ```{r plot-survey-level, out.width="100%"}
-geographyClean <- allSRAFinal %>% drop_na(strictestGeography) %>% count(strictestGeography)
-raceClean <- allSRAFinal %>% drop_na(strictestRace) %>% count(strictestRace)
+geographyClean <- allSRAFinal %>% drop_na(strictestGeography) %>% count(strictestGeography) %>% mutate(freq = n/sum(n))
+raceClean <- allSRAFinal %>% drop_na(strictestRace) %>% count(strictestRace) %>% mutate(freq = n/sum(n))
 
 ggplot(geographyClean, aes(x = strictestGeography, y = n, fill = strictestGeography)) +
   geom_bar(stat="identity") +
@@ -90,10 +91,13 @@ ggplot(geographyClean, aes(x = strictestGeography, y = n, fill = strictestGeogra
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position="none")
 
+geographyClean
+sum(geographyClean$n)
+
 ggplot(raceClean, aes(x = strictestRace, y = n, fill=strictestRace)) +
   geom_bar(stat="identity") +
   theme_bw() +
-  ggtitle("Submitted descriptor (US Census race term)") +
+  ggtitle("Submitted descriptor (US Census term)") +
   xlab("") +
   ylab("Samples") +
   # scale_y_continuous(trans='log10') +
@@ -101,9 +105,33 @@ ggplot(raceClean, aes(x = strictestRace, y = n, fill=strictestRace)) +
   scale_fill_race() +
     theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position="none")
+
+raceClean
+sum(raceClean$n)
+allSRAFinal %>% drop_na(strictestRace) %>% filter(!grepl("Hispanic", strictestRace)) %>% count(strictestRace) %>% mutate(freq = n/sum(n))
+
+nrow(allSRAFinal[!is.na(allSRAFinal$strictestGeography) | !is.na(allSRAFinal$strictestRace),])
+dim(allSRAFinal)
+
+# There's a discrepancy... but hispanic is now coded in strictestRace, so what is going on?
+nrow(allSRAFinal) - nrow(allSRAFinal[!is.na(allSRAFinal$strictestGeography) | !is.na(allSRAFinal$strictestRace),])
+allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(hispanic)
 ```
 
-A bit more granular now, showing n samples per study:
+All samples accounted for now. Pending a decision on the hispanic samples, then, the final numbers are:
+
+With hispanic samples:
+```{r}
+nrow(allSRAFinal)
+```
+
+Without hispanic samples:
+
+```{r}
+nrow(allSRAFinal[!is.na(allSRAFinal$strictestGeography) | !is.na(allSRAFinal$strictestRace),])
+```
+
+And now a bit more granular, showing n samples per study:
 
 ```{r plot-survey-level-2, out.width="100%", echo=F}
 sampleGeography <- allSRAFinal %>% count(SRA.Study, strictestGeography) %>% drop_na(strictestGeography)
@@ -113,38 +141,73 @@ meltSampleRace <- melt(sampleRace)
 
 ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fill=strictestGeography)) +
   geom_boxplot(width=0.8, outlier.shape = NA) +
-  geom_jitter(size=0.5, width=0.2, color="#333333") +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
   theme_bw() +
   ggtitle("Submitted descriptor\n(ancestral/geographic origin)") +
   xlab("") +
   ylab("Samples per study") +
-  # scale_y_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
   scale_fill_geography() +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position = "none")
 
 ggplot(meltSampleRace, aes(x = strictestRace, y=value,fill=strictestRace)) +
   geom_boxplot(width=0.8, outlier.shape = NA) +
-  geom_jitter(size=0.5, width=0.2, color="#333333") +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
   theme_bw() +
-  ggtitle("Submitted descriptor\n(US Census race term)") +
+  ggtitle("Submitted descriptor\n(US Census term)") +
   xlab("") +
   ylab("Samples per study") +
-  # scale_y_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
   scale_fill_race() +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position = "none")
+```
 
-allSRAFinal %>% filter(!is.na(strictestGeography)) %>% count(strictestGeography) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
-allSRAFinal %>% filter(!is.na(strictestRace)) %>% count(strictestRace) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
+Let's get some meaningful statistics on this:
+
+```{r}
+# Since no study contains both geo and race info, we can separate them out and make our lives easier:
+geographyClean <- allSRAFinal %>% drop_na(strictestGeography) 
+raceClean <- allSRAFinal %>% drop_na(strictestRace)
+hispanicClean <- allSRAFinal %>% drop_na(hispanic)
+
+length(unique(allSRAFinal$SRA.Study))
+length(unique(geographyClean$SRA.Study))
+length(unique(raceClean$SRA.Study))
+length(unique(hispanicClean$SRA.Study))
+
+geoSRA <- unique(geographyClean$SRA.Study)
+raceSRA <- unique(raceClean$SRA.Study)
+hispanicSRA <- unique(hispanicClean$SRA.Study)
+length(unique(c(geoSRA, raceSRA, hispanicSRA))) 
+
+geographyClean %>% group_by(SRA.Study) %>% 
+  summarise(size = n(), studyGeo = n_distinct(strictestGeography)) %>%
+  summarise(meanSize = mean(size), meanGeo = mean(studyGeo), maxSize = max(size), maxGeo = max(studyGeo))
+
+raceClean %>% group_by(SRA.Study) %>% 
+  summarise(size = n(), studyRace = n_distinct(strictestRace)) %>%
+  summarise(meanSize = mean(size), meanRace = mean(studyRace), maxSize = max(size), maxRace = max(studyRace))
+
+hispanicClean %>% group_by(SRA.Study) %>% 
+  summarise(size = n(), studyHis = n_distinct(hispanic)) %>%
+  summarise(meanSize = mean(size), meanHis = mean(studyHis), maxSize = max(size), maxHis = max(studyHis))
+
+geographyClean %>% group_by(strictestGeography) %>% 
+  summarise(size = n(), studyGeo = n_distinct(SRA.Study)) 
+
+raceClean %>% group_by(strictestRace) %>% 
+  summarise(size = n(), studyRace = n_distinct(SRA.Study)) 
+
+hispanicClean %>% group_by(hispanic) %>% 
+  summarise(size = n(), studyHis = n_distinct(SRA.Study)) 
+
 ```
 
 ## 2. And by who? Where is the sequencing happening?
 
 ```{r plot-clean-country, out.width="100%", echo=F}
-geographyClean <- allSRAFinal %>% drop_na(strictestGeography)
-raceClean <- allSRAFinal %>% drop_na(strictestRace)
-
 ggplot(geographyClean, aes(x = finalCountry, fill = strictestGeography)) +
   geom_bar(position = position_dodge2(width = 0.9, preserve = "single")) +
   theme_bw() +
@@ -195,9 +258,11 @@ allSRAFinal %>% filter(!is.na(finalCountry)) %>% count(finalCountry) %>% mutate(
 
 allSRAFinal %>% filter(!is.na(strictestGeography)) %>% count(worldBank) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 allSRAFinal %>% filter(!is.na(strictestRace)) %>% count(worldBank) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
+allSRAFinal %>% filter(!is.na(hispanic)) %>% count(worldBank) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 
 allSRAFinal %>% filter(!is.na(strictestGeography)) %>% count(finalCountry) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 allSRAFinal %>% filter(!is.na(strictestRace)) %>% count(finalCountry) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
+allSRAFinal %>% filter(!is.na(hispanic)) %>% count(finalCountry) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 ```
 
 Let's attempt some alluvial plot and call it quits:
@@ -323,9 +388,40 @@ allSRAFinal %>% count(worldRegion, hasDescriptor) %>%
     geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 4, direction = "y", nudge_x = .5) +
     theme_minimal() +
     theme(legend.position = "none")
-
-  
 ```
+
+And now, some statistics from the figures above:
+  
+```{r consolidated-stats}
+allSRAFinal %>% count(finalCountry, hasDescriptor) %>% 
+  group_by(finalCountry) %>%
+  mutate(percent = 100 * n/sum(n)) %>%
+  ungroup %>%
+  as.data.frame()
+                
+allSRAFinal %>% filter(!grepl('USA', finalCountry)) %>% 
+  count(hasDescriptor) %>% 
+  mutate(freq = n/sum(n))
+
+allSRAFinal %>% filter(!grepl('Hispanic', strictestRace)) %>% 
+  count(hasDescriptor) %>% 
+  mutate(freq = n/sum(n))
+
+allSRAFinal %>% count(hasDescriptor) %>% 
+  mutate(freq = n/sum(n))
+
+# We also want to know the mean sample size of studies in the USA vs those not in the USA, for funsies
+usaSizes <- allSRAFinal %>% filter(grepl('USA', finalCountry)) %>%
+  group_by(SRA.Study) %>%
+  summarise(n = n())
+
+nousaSizes <- allSRAFinal %>% filter(!grepl('USA', finalCountry)) %>%
+  group_by(SRA.Study) %>%
+  summarise(n = n())
+
+t.test(usaSizes$n, nousaSizes$n)
+```
+
 
 ## 3. What tissues are they sequencing?
 

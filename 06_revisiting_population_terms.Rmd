@@ -114,11 +114,11 @@ This is coded as `IGR.term.strictest`
 popDescriptors <- read.csv("20240702_descriptor_terms_new_schema.csv")
 
 allSRAFinal$mergedGeography <- coalesce(allSRAFinal$ancestry, allSRAFinal$Population) %>%
+  coalesce(., allSRAFinal$DONOR_ETHNICITY) %>%
   coalesce(., allSRAFinal$ETHNICITY) 
 
 allSRAFinal$mergedRace <- coalesce(allSRAFinal$RACE, allSRAFinal$race.ethnicity) %>%
   coalesce(., allSRAFinal$reported_race) %>%
-  coalesce(., allSRAFinal$DONOR_ETHNICITY) %>%
   coalesce(., allSRAFinal$primary_race) 
 
 popGeoNew <- popDescriptors[popDescriptors$IGR.coding.strictest %in% "geography",]
@@ -157,7 +157,12 @@ raceSRA <- unique(mismatches[mismatches$finalCountry %in% "USA",]$SRA.Study)
 
 allSRAFinal[allSRAFinal$SRA.Study %in% geoSRA,]$strictestRace <- NA
 allSRAFinal[allSRAFinal$SRA.Study %in% raceSRA,]$strictestGeography <- NA
-table(!is.na(allSRAFinal$strictestGeography), !is.na(allSRAFinal$strictestRace)) # Done.
+table(!is.na(allSRAFinal$strictestGeography), !is.na(allSRAFinal$strictestRace)) # Done... ish
+
+# Once we decide what to do with the hispanics, it should resolve this problem:
+allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(finalRace)
+allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(finalGeography)
+allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(hispanic)
 ```
 
 ### Option 2: THe original category label trumps most things

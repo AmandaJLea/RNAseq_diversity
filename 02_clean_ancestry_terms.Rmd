@@ -32,6 +32,7 @@ names(new)[8] <- "Cell_line"
 allSRA <- rbind.fill(old, new)
 dim(allSRA)
 allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+# allSRA <- unique(allSRA) # This is from Amanda, I do distinct below instead.
 dim(allSRA) # Yep that cleaned things up
 
 allSRAcounts <- as.data.frame(table(allSRA$SRA.Study))
@@ -39,7 +40,22 @@ keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
 allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$Var1,]
 dim(allSRAFilt) # Most of them stick around...
 
+# Some statistics before filtering for 10 samples or more
+length(unique(allSRA$SRA.Study))
+sum(table(allSRA$SRA.Study))
+length(unique(allSRA$BioSample))
+
+# And after filtering for 10 samples or more
+length(unique(allSRAFilt$SRA.Study))
+sum(table(allSRAFilt$SRA.Study))
+length(unique(allSRAFilt$BioSample))
+
 allSRAFilt <- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
+
+# And now after cleaning for pop descriptors:
+length(unique(allSRAFilt$SRA.Study))
+sum(table(allSRAFilt$SRA.Study))
+length(unique(allSRAFilt$BioSample))
 ```
 
 #### Are there any repeated BioSamples in here?
