@@ -114,10 +114,10 @@ This is coded as `IGR.term.strictest`
 popDescriptors <- read.csv("20240702_descriptor_terms_new_schema.csv")
 
 allSRAFinal$mergedGeography <- coalesce(allSRAFinal$ancestry, allSRAFinal$Population) %>%
-  coalesce(., allSRAFinal$DONOR_ETHNICITY) %>%
   coalesce(., allSRAFinal$ETHNICITY) 
 
 allSRAFinal$mergedRace <- coalesce(allSRAFinal$RACE, allSRAFinal$race.ethnicity) %>%
+  coalesce(., allSRAFinal$DONOR_ETHNICITY) %>%
   coalesce(., allSRAFinal$reported_race) %>%
   coalesce(., allSRAFinal$primary_race) 
 
