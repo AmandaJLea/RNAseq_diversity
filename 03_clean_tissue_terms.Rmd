@@ -433,7 +433,9 @@ Let's organise this a bit:
 * SRP164930: established. exclude. 
 
 ### Studies to keep:
+
 These are mostly iPSCs and derivatives, so not too sure what to do with them:
+
 * SRP347253: the big iPSC panel, correctly assigned to iPSCs. ok
 * SRP132693: iPSC, iPSC derived cardiomyocytes and primary heart tissue. correctly labelled. ok. 
 * SRP154009: iPSC and iPSC derived cardiomyocytes. correctly labelled. ok
@@ -448,6 +450,7 @@ These are mostly iPSCs and derivatives, so not too sure what to do with them:
 * SRP070663: Coriell cell lines and iPSCs from them, correctly assigned. unsure.
 
 # These are easy to justify keeping:
+
 * ERP114122: LCLs, (from 1000 Genomes). ok
 * SRP344545: LCLs, (from 1000 Genomes). ok
 * SRP106527: CEU LCL sequencing. ok
