@@ -242,8 +242,8 @@ fiveDesign <- "
 dbByRegion + dbByDescriptor + dbByEconomy + manualAlluvialCountry + manualAlluvialEconomy +
   plot_layout(design = fiveDesign) + 
   plot_annotation(tag_levels = 'a')
-ggsave("fig2_descriptor_usage.pdf", width = 9, height = 4)
-ggsave("fig2_descriptor_usage.png", width = 9, height = 4)
+ggsave("all_dbs_sample_properties.pdf", width = 8, height = 4)
+ggsave("all_dbs_sample_properties.png", width = 8, height = 4)
 ```
 
 
@@ -313,8 +313,8 @@ dbgapPlot <- ggplot(dbgapProp, aes(x = fct_rev(fct_inorder(variable)), y = n, fi
 geoPlot + litRevGeoPlot + dbgapPlot + racePlot + litRevRacePlot +
     plot_layout(design = long6Design, tag_level = 'new') +
     plot_annotation(tag_levels = 'a')
-ggsave("fig2_overall_all_methods.pdf", width = 9, height = 4)
-ggsave("fig2_overall_all_methods.png", width = 9, height = 4)
+ggsave("all_dbs_descriptors.pdf", width = 8, height = 4)
+ggsave("all_dbs_descriptors.png", width = 8, height = 4)
 
 
 ```
