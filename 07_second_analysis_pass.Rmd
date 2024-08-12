@@ -502,6 +502,7 @@ raceOrgan <- meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>%
 geoOrgan + raceOrgan +
   plot_layout(design=wide2Design)
 ggsave("fig3_organ_by_descriptor.pdf")
+ggsave("fig3_organ_by_descriptor.png")
 
 # If we want to plot by worldRegion we should filter out some of the smaller ones, because they're pointless. How about we only keep anything with >100 samples submitted?
 
@@ -631,6 +632,7 @@ raceDisease <- meltRace %>% drop_na(c(finalDisease, strictestRace)) %>%
 geoDisease + raceDisease +
   plot_layout(design=wide2Design)
 ggsave("fig3_Disease_by_descriptor.pdf")
+ggsave("fig3_Disease_by_descriptor.png")
 
 # If we want to plot by worldRegion we should filter out some of the smaller ones, because they're pointless. How about we only keep anything with >100 samples submitted?
 
