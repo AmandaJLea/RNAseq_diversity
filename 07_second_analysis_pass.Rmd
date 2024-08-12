@@ -774,3 +774,9 @@ allSRAFinal %>% drop_na(strictestGeography, finalDisease) %>% count(finalDisease
 allSRAFinal %>% drop_na(strictestRace, finalDisease) %>% count(finalDisease, finalOrgan, strictestRace) %>% mutate(freq = n/sum(n)) %>% group_by(finalDisease) %>% mutate(diseaseFreq = n/sum(n)) %>% ungroup() %>% as.data.frame()
 allSRAFinal %>% drop_na(worldRegion, finalDisease) %>% count(finalDisease, finalOrgan, worldRegion) %>% mutate(freq = n/sum(n)) %>% group_by(finalDisease) %>% mutate(diseaseFreq = n/sum(n)) %>% ungroup() %>% as.data.frame()
 ```
+
+And then we write the file out, for the joint plotting adventures...
+
+```{r allSRAOut}
+saveRDS(allSRAFinal, file="20240812_allSRAFinal_for_plotting.rds")
+```
