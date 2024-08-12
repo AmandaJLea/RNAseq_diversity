@@ -1,0 +1,323 @@
+---
+title: "OMG finally"
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+We will finally analyse this data properly. 
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(patchwork)
+library(ggalluvial)
+library(RColorBrewer)
+library(ggrepel)
+library(viridis)
+library(thematic)
+options(device = "quartz")
+
+allSRAFinal <- readRDS("20240812_allSRAFinal_for_plotting.rds")
+dbGapFinal <- readRDS("20240731_dbgap_final.rds")
+litRevFinal <- readRDS("20240812_manual_final.rds")
+
+```
+
+# We need to clean up a bit for the new files:
+
+I looked at the GWAS Catalog's description of their ancestry curation, and I still don't know what to do with the samples that Amanda has, because I would argue that this is genetic ancestry, poorly described, which is not necessarily the case for the other two datasets. But it also has a bunch of terms that are clearly racial in origin and inspiration, so, like... dunno what to do here.  
+
+```{r dbgap-prep-1}
+unique(dbGapFinal$variable) # This is really a horrible mix of both, but I guess primarily of geography terms, so I'm making it a new colour scheme... Set 3 here we go
+
+dbGapFinal$variable <- factor(dbGapFinal$variable, levels = c("African", "African American", "European", "South Asian", "East Asian", "Other Asian or Pacific Islander", "HispanicA", "HispanicB", "Other"))
+
+dbGapColours <- brewer.pal(9,"Set3") #8 because we don't plot NAs... might want to shuffle 
+
+scale_color_dbGap <- function(...){
+    ggplot2:::manual_scale('color', 
+        values = setNames(dbGapColours, levels(dbGapFinal$variable)), 
+    )
+}
+
+scale_fill_dbGap <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(dbGapColours, levels(dbGapFinal$variable)), 
+    )
+}
+
+```
+
+```{r plotting-prep-1}
+# SRA colours:
+
+litRevFinal$finalGeo <- factor(litRevFinal$finalGeo, levels = c("Subsaharan Africa", "Europe", "South Asia","East Asia", "Asia (NOS)"))
+
+scale_fill_geography <- function(...){
+    ggplot2:::manual_scale('fill',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
+    )
+}
+
+scale_color_geography <- function(...){
+    ggplot2:::manual_scale('color',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
+    )
+}
+
+raceColours <- brewer.pal(8,"Set2") #8 because we don't plot NAs
+
+scale_color_race <- function(...){
+    ggplot2:::manual_scale('color', 
+                           values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
+    )
+}
+
+scale_fill_race <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
+    )
+}
+
+# We also define a couple of plot layouts:
+long6Design <- "
+  123
+  456
+"
+
+wide6Design <- "
+  12
+  34
+  56
+"
+
+long2Design <- "
+  12
+  12
+"
+wide2Design <- "
+  11
+  22
+"
+
+theme_set(theme_bw(base_size = 6))
+theme_update(axis.text=element_text(size=8))
+theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
+        legend.title = element_text(size=8), #change legend title font size
+        legend.text = element_text(size=6),
+        plot.title = element_text(size=8))
+
+```
+
+
+We're also going to use some additional info from the World Bank, so let's add those columns in now, to all datasets (they're already in SRA, so only need to add them to dbgap, which is easy—all USA—and to the recount manual files):
+
+Worth keeping in mind that China here includes Hong Kong SAR, which is world bank high income while the rest of China is upper middle.
+
+```{r plotting-prep-2}
+worldBank <- read.csv("World_Bank_Descriptors.csv")
+
+dbGapFinal$worldBank <- "High income"
+dbGapFinal$worldRegion <- "North America"
+
+# Lit review has the unique benefit of being the only place where we have submitting country and sampling country, so we will consider both
+
+litRevFinal <- litRevFinal %>%
+  mutate(samcountry = gsub("England", "United Kingdom", samcountry)) %>%
+  mutate(samcountry = gsub("Hong Kong", "China", samcountry)) %>%
+  mutate(lacountry = gsub("Hong Kong", "China", lacountry)) %>%
+  mutate(samcountry = gsub("United States; United States", "United States", samcountry)) %>%
+  mutate(samcountry = gsub("Pennsylvania", "United States", samcountry)) %>%
+  mutate(samcountry = gsub("^Unknown$", "Unreported/Unknown", samcountry)) %>%
+  mutate(samcountry = gsub("^Unreported$", "Unreported/Unknown", samcountry)) %>%
+  mutate(samcountry = gsub("^unreported$", "Unreported/Unknown", samcountry))
+
+litRevFinal$worldBankSample <- worldBank[match(litRevFinal$samcountry, worldBank$Economy),]$Income.group
+litRevFinal$worldBankLA <- worldBank[match(litRevFinal$lacountry, worldBank$Economy),]$Income.group
+
+litRevFinal$worldRegionSample <- worldBank[match(litRevFinal$samcountry, worldBank$Economy),]$Region
+litRevFinal$worldRegionLA <- worldBank[match(litRevFinal$lacountry, worldBank$Economy),]$Region
+
+litRevFinal %>% count(samcountry, worldBankSample)
+litRevFinal %>% count(lacountry, worldBankLA)
+
+litRevFinal %>% count(samcountry, worldRegionSample)
+litRevFinal %>% count(lacountry, worldRegionLA)
+
+# As before, missing countries are all high income, so we can set them to that manually now that we're happy with the names:
+litRevFinal <- litRevFinal %>% 
+  mutate(worldBankLA = if_else(grepl("South Korea|Taiwan", lacountry), "High income", worldBankLA)) %>%
+  mutate(worldRegionLA = if_else(grepl("South Korea|Taiwan", lacountry), "East Asia & Pacific", worldRegionLA)) %>%
+  as.data.frame()
+
+# And now we need to clean up some labels so we can plot them better. Good thing is, it's just an ampersand:
+litRevFinal$worldRegionLA <- gsub("& ", "&\n", litRevFinal$worldRegionLA)
+litRevFinal$worldRegionSample <- gsub("& ", "&\n", litRevFinal$worldRegionSample)
+```
+
+## 1. Where is the sequencing happening, and what countries are being included?  
+
+The best plots here are probably a stacked bar chart for the three datasets, and then an alluvial for the manual review showing sampling country and last author country
+
+```{r plot-clean-country, out.width="100%", echo=F}
+litRevFinal <- litRevFinal %>% 
+  mutate(hasDescriptor = if_else(grepl("ancestry", ReportedS), "Geographic", "Racial"))
+
+sraCountry <- allSRAFinal %>% drop_na(finalCountry) %>% count(finalCountry, worldRegion, worldBank, hasDescriptor) %>% melt() %>% arrange(worldRegion) %>% mutate(db = "SRA")
+dbGapCountry <- dbGapFinal %>% drop_na(finalCountry) %>% group_by(finalCountry, worldRegion, worldBank) %>% summarise(value = sum(value)) %>% mutate(db = "dbGap") %>% as.data.frame()
+litRevCountry <- litRevFinal %>% drop_na(lacountry) %>% group_by(lacountry, worldRegionLA, worldBankLA, samcountry, worldRegionSample, worldBankSample, hasDescriptor) %>% summarise(value = sum(individs)) %>% mutate(db = "Manual") %>% as.data.frame()
+
+# Fix a couple of names for litRev so we can do some nice stacked bar plots...
+names(litRevCountry)[1:3] <- c("finalCountry", "worldRegion", "worldBank")
+
+allCountry <- rbind.fill(sraCountry, dbGapCountry, litRevCountry)
+allCountry <- allCountry %>%
+  mutate(worldBank = gsub("middle ", "middle\n", worldBank)) %>% 
+  mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) 
+
+dbByRegion <- ggplot(allCountry, aes(x = fct_inorder(db), y=value, fill=worldRegion)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Sample depositor location\n(WB Economic Region)") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "vertical", legend.background=element_blank())
+
+dbByDescriptor <- ggplot(allCountry, aes(x = fct_inorder(db), y=value, fill=hasDescriptor)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Descriptor usage") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "vertical", legend.background=element_blank())
+
+dbByEconomy <- ggplot(allCountry, aes(x = fct_inorder(db), y=value, fill=worldBank)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Sample depositor location\n(WB Income Group)") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "vertical", legend.background=element_blank())
+
+manualAlluvialCountry <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(finalCountry) %>%
+  ggplot(data = ., aes(axis1 = finalCountry, axis2 = samcountry, y = value)) +
+    scale_x_discrete(limits = c("Last author country", "Sampling country"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = worldRegionSample)) +
+    geom_stratum(width=1/4) +
+    ylab("Samples") +
+    # geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), direction = "y", size=0.02) +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+    theme_minimal(base_size = 8) +
+    theme(legend.position = "none")
+  
+manualAlluvialEconomy <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(worldBank) %>% 
+  ggplot(data = ., aes(axis1 = worldBank, axis2 = worldBankSample, y = value)) +
+    scale_x_discrete(limits = c("Last author country\nWBIG", "Sampling country\nWBIG"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = worldRegionSample)) +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    # geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+    theme_minimal(base_size = 8) +
+    theme(legend.position = "none")
+
+fiveDesign <- "
+  112233
+  444555
+"
+dbByRegion + dbByDescriptor + dbByEconomy + manualAlluvialCountry + manualAlluvialEconomy +
+  plot_layout(design = fiveDesign) + 
+  plot_annotation(tag_levels = 'a')
+ggsave("fig2_descriptor_usage.pdf", width = 9, height = 4)
+ggsave("fig2_descriptor_usage.png", width = 9, height = 4)
+```
+
+
+## 2. Sample breakdown by descriptor
+
+Making main text figure 3 - ancestry breakdown for all comparisons
+
+```{r plot-survey-level, out.width="100%"}
+geographyProp <- allSRAFinal %>% drop_na(strictestGeography) %>% count(strictestGeography) %>% mutate(freq = n/sum(n))
+raceProp <- allSRAFinal %>% drop_na(strictestRace) %>% count(strictestRace) %>% mutate(freq = n/sum(n))
+
+dbgapProp <- dbGapFinal %>% group_by(variable) %>% summarise(n = sum(value)) %>% mutate(freq = n/sum(n))
+
+litRevGeoProp <- litRevFinal %>% drop_na(finalGeo) %>% group_by(finalGeo) %>% summarise(n = sum(individs)) %>% mutate(freq = n/sum(n))
+litRevRaceProp <- litRevFinal %>% drop_na(finalRace) %>% group_by(finalRace) %>% summarise(n = sum(individs)) %>% mutate(freq = n/sum(n))
+
+geoPlot <- ggplot(geographyProp, aes(x = fct_inorder(strictestGeography), y = n, fill = strictestGeography)) +
+  geom_bar(stat="identity") +
+  ggtitle("Submitted SRA descriptor\n(ancestral/geographic origin)") +
+  xlab("") +
+  ylab("Samples") +
+  coord_flip() +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none")
+
+racePlot <- ggplot(raceProp, aes(x = fct_rev(fct_inorder(strictestRace)), y = n, fill=strictestRace)) +
+  geom_bar(stat="identity") +
+  ggtitle("Submitted SRA descriptor\n(US Census term)") +
+  xlab("") +
+  ylab("Samples") +
+  coord_flip() +
+  scale_fill_race() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none")
+
+litRevGeoPlot <- ggplot(litRevGeoProp, aes(x = fct_inorder(finalGeo), y = n, fill = finalGeo)) +
+  geom_bar(stat="identity") +
+  ggtitle("Recorded manual descriptor\n(ancestral/geographic origin)") +
+  xlab("") +
+  ylab("Samples") +
+  coord_flip() +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none")
+
+litRevRacePlot <- ggplot(litRevRaceProp, aes(x = fct_rev(fct_inorder(finalRace)), y = n, fill=finalRace)) +
+  geom_bar(stat="identity") +
+  ggtitle("Recorded manual descriptor\n(US Census term)") +
+  xlab("") +
+  ylab("Samples") +
+  coord_flip() +
+  scale_fill_race() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none")
+
+dbgapPlot <- ggplot(dbgapProp, aes(x = fct_rev(fct_inorder(variable)), y = n, fill=variable)) +
+  geom_bar(stat="identity") +
+  ggtitle("Reported dbGap descriptor\n(GrafPop software)") +
+  xlab("") +
+  ylab("Samples") +
+  coord_flip() +
+  scale_fill_dbGap() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none")
+
+geoPlot + litRevGeoPlot + dbgapPlot + racePlot + litRevRacePlot +
+    plot_layout(design = long6Design, tag_level = 'new') +
+    plot_annotation(tag_levels = 'a')
+ggsave("fig2_overall_all_methods.pdf", width = 9, height = 4)
+ggsave("fig2_overall_all_methods.png", width = 9, height = 4)
+
+
+```
+
+All samples accounted for now, at last! 
+
