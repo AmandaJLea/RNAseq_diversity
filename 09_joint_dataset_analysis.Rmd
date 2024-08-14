@@ -23,6 +23,7 @@ library(RColorBrewer)
 library(ggrepel)
 library(viridis)
 library(thematic)
+library(scales)
 options(device = "quartz")
 
 allSRAFinal <- readRDS("20240812_allSRAFinal_for_plotting.rds")
@@ -87,6 +88,14 @@ scale_fill_race <- function(...){
     )
 }
 
+
+# And finally, the world Bank Economic region palette, for later:
+wberCols <- c(viridis::turbo(n = 7))
+scale_fill_wber <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(wberCols, c("East Asia &\nPacific", "Europe &\nCentral Asia", "Latin America &\nCaribbean", "Middle East &\nNorth Africa", "North America", "South Asia", "Sub-Saharan Africa")), na.value = "grey50")
+}
+
 # We also define a couple of plot layouts:
 long6Design <- "
   123
@@ -99,14 +108,22 @@ wide6Design <- "
   56
 "
 
-long2Design <- "
+fourDesign <- "
   12
-  12
+  34
 "
-wide2Design <- "
-  11
-  22
+
+fiveDesign <- "
+  123
+  45#
 "
+
+fiveLongDesign <- "
+  14
+  25
+  3#
+"
+
 
 theme_set(theme_bw(base_size = 6))
 theme_update(axis.text=element_text(size=8))
@@ -181,42 +198,48 @@ names(litRevCountry)[1:3] <- c("finalCountry", "worldRegion", "worldBank")
 allCountry <- rbind.fill(sraCountry, dbGapCountry, litRevCountry)
 allCountry <- allCountry %>%
   mutate(worldBank = gsub("middle ", "middle\n", worldBank)) %>% 
-  mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) 
+  mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) %>%
+  mutate(hasDescriptor = if_else(grepl("dbGap", db), "GrafPop", hasDescriptor)) %>%
+  mutate(finalCountry = if_else(grepl("USA", finalCountry), "United States", finalCountry))
 
 dbByRegion <- ggplot(allCountry, aes(x = fct_inorder(db), y=value, fill=worldRegion)) +
   geom_bar(stat = "identity") +
   ggtitle("Sample depositor location\n(WB Economic Region)") +
   xlab("Database") +
   ylab("Number of samples") +
+  scale_fill_wber() +
   coord_flip() +
   guides(fill=guide_legend(title="", label.position="left")) +
-  # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  theme(legend.title.align = 1, legend.direction = "vertical", legend.background=element_blank())
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
 
 dbByDescriptor <- ggplot(allCountry, aes(x = fct_inorder(db), y=value, fill=hasDescriptor)) +
   geom_bar(stat = "identity") +
   ggtitle("Descriptor usage") +
   xlab("Database") +
   ylab("Number of samples") +
+  scale_fill_viridis_d(option = "rocket", na.value = "grey50") +
   coord_flip() +
   guides(fill=guide_legend(title="", label.position="left")) +
-  # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  theme(legend.title.align = 1, legend.direction = "vertical", legend.background=element_blank())
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
 
 dbByEconomy <- ggplot(allCountry, aes(x = fct_inorder(db), y=value, fill=worldBank)) +
   geom_bar(stat = "identity") +
   ggtitle("Sample depositor location\n(WB Income Group)") +
   xlab("Database") +
   ylab("Number of samples") +
+  scale_fill_viridis_d(option = "viridis") +
   coord_flip() +
   guides(fill=guide_legend(title="", label.position="left")) +
-  # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  theme(legend.title.align = 1, legend.direction = "vertical", legend.background=element_blank())
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
 
 manualAlluvialCountry <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(finalCountry) %>%
-  ggplot(data = ., aes(axis1 = finalCountry, axis2 = samcountry, y = value)) +
-    scale_x_discrete(limits = c("Last author country", "Sampling country"), expand = c(.2, .05)) +
+  ggplot(data = ., aes(axis1 = worldRegion, axis2 = worldRegionSample, y = value)) +
+    scale_x_discrete(limits = c("Last author\nWBEG", "Sampling country\nWBEG"), expand = c(.2, .05)) +
     geom_alluvium(aes(fill = worldRegionSample)) +
+    scale_fill_wber() +
     geom_stratum(width=1/4) +
     ylab("Samples") +
     # geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), direction = "y", size=0.02) +
@@ -226,8 +249,9 @@ manualAlluvialCountry <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(
   
 manualAlluvialEconomy <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(worldBank) %>% 
   ggplot(data = ., aes(axis1 = worldBank, axis2 = worldBankSample, y = value)) +
-    scale_x_discrete(limits = c("Last author country\nWBIG", "Sampling country\nWBIG"), expand = c(.2, .05)) +
+    scale_x_discrete(limits = c("Last author\nWBIG", "Sampling country\nWBIG"), expand = c(.2, .05)) +
     geom_alluvium(aes(fill = worldRegionSample)) +
+    scale_fill_wber() +
     geom_stratum(width=1/3) +
     ylab("Samples") +
     # geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
@@ -235,15 +259,53 @@ manualAlluvialEconomy <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(
     theme_minimal(base_size = 8) +
     theme(legend.position = "none")
 
-fiveDesign <- "
-  112233
-  444555
-"
-dbByRegion + dbByDescriptor + dbByEconomy + manualAlluvialCountry + manualAlluvialEconomy +
-  plot_layout(design = fiveDesign) + 
+dbByRegion + dbByEconomy + dbByDescriptor + manualAlluvialCountry + manualAlluvialEconomy +
+  plot_layout(design = fiveLongDesign) + 
   plot_annotation(tag_levels = 'a')
-ggsave("all_dbs_sample_properties.pdf", width = 8, height = 4)
-ggsave("all_dbs_sample_properties.png", width = 8, height = 4)
+ggsave("all_dbs_sample_properties.pdf", width = 4.5, height = 9)
+ggsave("all_dbs_sample_properties.png", width = 4.5, height = 9)
+
+dbByRegion + dbByEconomy + dbByDescriptor + manualAlluvialCountry +
+  plot_layout(design = fourDesign) + 
+  plot_annotation(tag_levels = 'a')
+ggsave("all_dbs_sample_properties_four.pdf", width = 6, height = 6)
+ggsave("all_dbs_sample_properties_four.png", width = 6, height = 6)
+```
+
+How overrepresented are these numbers? We begin by grabbing the UN population data:
+
+```{r overrepresentation}
+worldPop <- read.csv("RNA-seq-diversity_world-population.csv")
+worldPop$name <- gsub("Korea, South", "South Korea", worldPop$name)
+
+allCountry2 <- allCountry %>% 
+  group_by(finalCountry, db, worldRegion) %>% 
+  summarise(value = sum(value)) %>%
+  as.data.frame()
+
+allCountry3 <- left_join(allCountry2, worldPop, join_by( "finalCountry" == "name"))
+
+# And now we get some fancy new columns for plotting
+allCountry3 <- allCountry3 %>% 
+  mutate(fractPop = value.y/sum(worldPop$value)) %>%
+  group_by(db) %>%
+  mutate(fractDB = value.x/sum(value.x)) %>%
+  mutate(excess = fractDB/fractPop) %>%
+  as.data.frame()
+
+ggplot(allCountry3, aes(x = excess, y=finalCountry, color=db)) +
+  geom_point(size = 3) +
+  scale_x_continuous(trans='log10', breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+  geom_vline(xintercept = 1) +
+  annotation_logticks(sides="b") +
+  xlab("Overrepresentation in database\nrelative to global population") +
+  ylab("Depositing/Last author country") +
+  theme_bw(base_size = 8) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.position="bottom")
+
+ggsave("db_overrepresentation.pdf", width = 3, height = 8)
+ggsave("db_overrepresentation.png", width = 3, height = 8)
+
 ```
 
 
@@ -313,8 +375,8 @@ dbgapPlot <- ggplot(dbgapProp, aes(x = fct_rev(fct_inorder(variable)), y = n, fi
 geoPlot + litRevGeoPlot + dbgapPlot + racePlot + litRevRacePlot +
     plot_layout(design = long6Design, tag_level = 'new') +
     plot_annotation(tag_levels = 'a')
-ggsave("all_dbs_descriptors.pdf", width = 8, height = 4)
-ggsave("all_dbs_descriptors.png", width = 8, height = 4)
+ggsave("all_dbs_descriptors.pdf", width = 7, height = 3.5)
+ggsave("all_dbs_descriptors.png", width = 7, height = 3.5)
 
 
 ```
