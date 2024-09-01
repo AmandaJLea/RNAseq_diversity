@@ -598,7 +598,7 @@ allSRAFinal %>% count(hispanic, strictestRace)
 
 # Not sure if this is due to how we coded it, but that's pleasant. Except, what to do with the people with two labels??
 
-saveRDS(allSRAFinal, file="20240704_allSRAFinal.rds")
+ saveRDS(allSRAFinal, file="20240901_allSRAFinal.rds")
 
 
 ```

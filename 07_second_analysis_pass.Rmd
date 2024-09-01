@@ -25,7 +25,7 @@ library(viridis)
 library(thematic)
 options(device = "quartz")
 
-allSRAFinal <- readRDS("20240704_allSRAFinal.rds")
+allSRAFinal <- readRDS("20240901_allSRAFinal.rds")
 ```
 
 After discussion with Amanda, we'll be using the strictestRace/Geography assignments, see `06_revisiting_population_terms` for more context on what this means.
@@ -780,5 +780,5 @@ allSRAFinal %>% drop_na(worldRegion, finalDisease) %>% count(finalDisease, final
 And then we write the file out, for the joint plotting adventures...
 
 ```{r allSRAOut}
-saveRDS(allSRAFinal, file="20240812_allSRAFinal_for_plotting.rds")
+saveRDS(allSRAFinal, file="20240901_allSRAFinal_for_plotting.rds")
 ```
