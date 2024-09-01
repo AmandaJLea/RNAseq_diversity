@@ -71,8 +71,9 @@ dbgapMelt <- melt(dbgap[,c(1:18,22,24,26,28)], id=names(dbgap)[c(10:18,22,24,26,
 # And now a bit of cleaning:
 dbgapMelt <- dbgapMelt %>%
   mutate(variable = gsub("_", " ", variable)) %>%
-  mutate(variable = gsub("\\.", " ", variable))
-  
+  mutate(variable = gsub("\\.", " ", variable)) %>%
+  mutate(variable = gsub("or ", "or\n", variable)) 
+
 dbgapMelt %>%
   group_by(variable) %>%
   summarise(sum(value))
