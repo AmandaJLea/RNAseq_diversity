@@ -36,6 +36,7 @@ allSRAFinal <- allSRAFinal %>%
     mutate(strictestRace = gsub("or ", "or\n", strictestRace)) %>%
     mutate(strictestGeography = gsub("and ", "and\n", strictestGeography)) %>%
     mutate(strictestGeography = gsub("^Asia$", "Asia (NOS)", strictestGeography)) %>%
+    mutate(strictestGeography = gsub("Subsaharan", "Sub-Saharan", strictestGeography)) %>%
     mutate(hispanic = gsub("^hispanic$", "Hispanic", hispanic)) %>%
     mutate(finalOrgan = gsub("^cancer$", "Cancer sample\n(NOS)", finalOrgan)) %>%
     mutate(finalSystem = gsub("^cancer$", "Cancer sample\n(NOS)", finalSystem)) %>%
@@ -60,7 +61,7 @@ allSRAFinal$strictestRace <- factor(allSRAFinal$strictestRace)
 
 # Now let's sort out some colour schemes... For Race we simply use Dark2 but we need to keep the mapping consistent, but for Geography we are following Alicia Martin and using a somewhat custom palette that doesn't follow anything standard, and then adding some new colours of our own; I opened a paper in Affinity and grabbed the html values and then added a couple for the new entries (Southeast Asia, Asia NOS):
 
-allSRAFinal$strictestGeography <- factor(allSRAFinal$strictestGeography, levels = c("Subsaharan Africa", "North Africa and\nWestern Asia", "Europe", "South Asia", "Southeast Asia", "East Asia", "Asia (NOS)", "Oceania", "Americas", "Multiple", "Other"))
+allSRAFinal$strictestGeography <- factor(allSRAFinal$strictestGeography, levels = c("Sub-Saharan Africa", "North Africa and\nWestern Asia", "Europe", "South Asia", "Southeast Asia", "East Asia", "Asia (NOS)", "Oceania", "Americas", "Multiple", "Other"))
 
 scale_fill_geography <- function(...){
     ggplot2:::manual_scale('fill',  

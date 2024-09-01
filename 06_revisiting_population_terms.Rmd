@@ -272,6 +272,8 @@ Reminder that *final* is the most artisanal, *strict* is a bit more conservative
 allSRAFinal <- allSRAFinal %>% 
     mutate(strictRace = gsub("or ", "or\n", strictRace)) %>%
     mutate(strictestRace = gsub("or ", "or\n", strictestRace)) %>%
+    mutate(strictRace = gsub("and ", "and\n", strictRace)) %>%
+    mutate(strictestRace = gsub("and ", "and\n", strictestRace)) %>%
     mutate(strictGeography = gsub("and ", "and\n", strictGeography)) %>%
     mutate(strictestGeography = gsub("and ", "and\n", strictestGeography)) %>%
     as.data.frame()
