@@ -237,7 +237,7 @@ dbByEconomy <- allCountry %>% group_by(worldBank, db) %>% summarise(value = sum(
 
 manualAlluvialCountry <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(finalCountry) %>%
   ggplot(data = ., aes(axis1 = worldRegion, axis2 = worldRegionSample, y = value)) +
-    scale_x_discrete(limits = c("Last author\nWBEG", "Sampling country\nWBEG"), expand = c(.2, .05)) +
+    scale_x_discrete(limits = c("Last author\nWBER", "Sampling country\nWBER"), expand = c(.2, .05)) +
     geom_alluvium(aes(fill = worldRegionSample)) +
     scale_fill_wber() +
     geom_stratum(width=1/4) +
