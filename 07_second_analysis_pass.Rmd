@@ -89,6 +89,13 @@ scale_fill_race <- function(...){
     )
 }
 
+wberCols <- c(viridis::turbo(n = 7))
+scale_fill_wber <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(wberCols, c("East Asia &\nPacific", "Europe &\nCentral Asia", "Latin America &\nCaribbean", "Middle East &\nNorth Africa", "North America", "South Asia", "Sub-Saharan Africa")), na.value = "grey50")
+}
+
+
 # We also define a couple of plot layouts:
 long2Design <- "
   12
@@ -100,11 +107,12 @@ wide2Design <- "
 "
 
 theme_set(theme_bw(base_size = 6))
-theme_update(axis.text=element_text(size=6))
+theme_update(axis.text=element_text(size=7))
 theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
         legend.title = element_text(size=8), #change legend title font size
         legend.text = element_text(size=6),
         plot.title = element_text(size=8))
+theme_update(plot.margin = unit(c(0, 0, 0, 0), "pt"))
 ```
 
 We're also going to use some additional info from the World Bank, so let's add those columns in now:
@@ -209,6 +217,7 @@ geobyStudy <- ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fi
   ggtitle("Submitted descriptor\n(ancestral/geographic origin)") +
   xlab("") +
   ylab("Samples per study") +
+  coord_flip() +
   scale_y_continuous(trans='log10') +
   scale_fill_geography() +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
@@ -220,15 +229,17 @@ racebyStudy <- ggplot(meltSampleRace, aes(x = strictestRace, y=value,fill=strict
   ggtitle("Submitted descriptor\n(US Census term)") +
   xlab("") +
   ylab("Samples per study") +
+  coord_flip() +
   scale_y_continuous(trans='log10') +
   scale_fill_race() +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.position = "none")
 
 geobyStudy + racebyStudy +
-  plot_layout(design = wide2Design)
-ggsave("fig1_by_study_boxplot.pdf")
-
+  plot_layout(design = long2Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig2_by_study_boxplot.pdf", width=7, height=7)
+ggsave("fig2_by_study_boxplot.png", width=7, height=7)
 ```
 
 Let's get some meaningful statistics on this:
@@ -251,24 +262,21 @@ allSRAFinal %>% filter(grepl(paste(intersect(geoSRA, raceSRA), collapse="|"), SR
 
 allSRAFinal %>% filter(grepl(paste(intersect(geoSRA, raceSRA), collapse="|"), SRA.Study)) %>% nrow()
 
-allSRAFinal %>% filter(grepl(paste(intersect(geoSRA, raceSRA), collapse="|"), SRA.Study)) %>%
-  group_by(SRA.Study) %>%
-  count(strictestGeography, strictestRace, finalCountry) %>%
-  as.data.frame()
-
+# Diversity by study:
 geographyClean %>% group_by(SRA.Study) %>% 
   summarise(size = n(), studyGeo = n_distinct(strictestGeography)) %>%
-  summarise(meanSize = mean(size), meanGeo = mean(studyGeo), maxSize = max(size), maxGeo = max(studyGeo))
+  summarise(n = size, meanSize = mean(size), meanGeo = mean(studyGeo), maxSize = max(size), maxGeo = max(studyGeo), sdSize = sd(size), sdGeo = sd(studyGeo))
 
 raceClean %>% group_by(SRA.Study) %>% 
   summarise(size = n(), studyRace = n_distinct(strictestRace)) %>%
-  summarise(meanSize = mean(size), meanRace = mean(studyRace), maxSize = max(size), maxRace = max(studyRace))
+  summarise(n = size, meanSize = mean(size), meanRace = mean(studyRace), maxSize = max(size), maxRace = max(studyRace), sdSize = sd(size), sdRace = sd(studyRace))
 
-geographyClean %>% group_by(strictestGeography) %>% 
-  summarise(size = n(), studyGeo = n_distinct(SRA.Study)) 
+# By descriptor across all studies
+geographyClean %>% group_by(SRA.Study) %>% count(strictestGeography) %>% group_by(strictestGeography) %>% 
+  summarise(size = sum(n), studyGeo = n_distinct(SRA.Study), mean = mean(n), max = max(n), sd = sd(n)) 
 
-raceClean %>% group_by(strictestRace) %>% 
-  summarise(size = n(), studyRace = n_distinct(SRA.Study)) 
+raceClean %>% group_by(SRA.Study) %>% count(strictestRace) %>% group_by(strictestRace) %>% 
+  summarise(size = sum(n), studyRace = n_distinct(SRA.Study), mean = mean(n), max = max(n), sd = sd(n)) 
 ```
 
 ## 2. And by who? Where is the sequencing happening? 
@@ -333,11 +341,47 @@ ggplot(., aes(x = fct_rev(fct_infreq(worldRegion)), y=value, fill = strictestRac
 geoByRegion + raceByRegion +
     plot_layout(design = long2Design)
 ggsave("fig2_by_region.pdf")
+
+studybyRegion <- allSRAFinal %>% count(SRA.Study, worldRegion) %>% drop_na(worldRegion) %>% 
+  ggplot(., aes(x = worldRegion, y=n,fill=worldRegion)) +
+    geom_boxplot(width=0.8, outlier.shape = NA) +
+    geom_jitter(size=0.8, width=0.2, color="#333333") +
+    ggtitle("Sample depositor location\n(WB Economic Region)") +
+    xlab("") +
+    ylab("Samples per study") +
+    coord_flip() +
+    scale_y_continuous(trans='log10') +
+    scale_fill_wber() +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "none")
+
+studybyRegion
+ggsave("fig2_by_study_by_region.pdf", height=5, width=5)
+ggsave("fig2_by_study_by_region.png", height=5, width=5)
+
 ```
 
 Some nice statistics about all of this:
 
 ```{r plot-clean-country-2, out.width="100%"}
+# By study by world region:
+geographyClean %>% group_by(worldRegion, SRA.Study) %>% 
+  summarise(size = n(), studyGeo = n_distinct(strictestGeography)) %>%
+  summarise(n = n(), meanSize = mean(size), meanGeo = mean(studyGeo), maxSize = max(size), maxGeo = max(studyGeo), sdSize = sd(size), sdGeo = sd(studyGeo))
+
+raceClean %>% group_by(worldRegion, SRA.Study) %>% 
+  summarise(size = n(), studyRace = n_distinct(strictestRace)) %>%
+  summarise(n = n(), meanSize = mean(size), meanRace = mean(studyRace), maxSize = max(size), maxRace = max(studyRace), sdSize = sd(size), sdRace = sd(studyRace))
+
+# By descriptor by economic region
+geographyClean %>% group_by(SRA.Study, worldRegion) %>% count(strictestGeography) %>% group_by(worldRegion, strictestGeography) %>% 
+  summarise(size = sum(n), studyGeo = n_distinct(SRA.Study), mean = mean(n), max = max(n), sd = sd(n)) %>%
+  as.data.frame()
+
+raceClean %>% group_by(SRA.Study, worldRegion) %>% count(strictestRace) %>% group_by(worldRegion, strictestRace) %>% 
+  summarise(size = sum(n), studyRace = n_distinct(SRA.Study), mean = mean(n), max = max(n), sd = sd(n)) %>%
+  as.data.frame()
+
 allSRAFinal %>% filter(!is.na(worldBank)) %>% count(worldBank) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 allSRAFinal %>% filter(!is.na(finalCountry)) %>% count(finalCountry) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 
@@ -477,40 +521,91 @@ As above, we start by looking simply at the country/region where sequencing is h
 geographySummary <- allSRAFinal %>% count(strictestGeography, finalCountry, worldRegion, finalOrgan, finalDisease)
 raceSummary <- allSRAFinal %>% count(strictestRace, finalCountry, worldRegion, finalOrgan, finalDisease)
 
-meltGeography <- melt(geographySummary)
-meltRace <- melt(raceSummary)
-
-geoOrgan <- meltGeography %>% drop_na(c(finalOrgan, strictestGeography)) %>%
-  ggplot(., aes(x = finalOrgan, y = value, fill = strictestGeography)) +
+geoOrgan <- geographySummary %>% group_by(finalOrgan, strictestGeography) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalOrgan, strictestGeography)) %>% as.data.frame %>%
+# geoOrgan <- meltGeography %>% drop_na(c(finalOrgan, strictestGeography)) %>%
+  ggplot(., aes(x = fct_rev(finalOrgan), y = value, fill = strictestGeography)) +
   geom_bar(stat="identity") +
   xlab("") +
   ylab("Samples") +
+  coord_flip() +
   scale_fill_geography(name="Population\nDescriptor") +
-  guides(fill=guide_legend(title="", label.position="left", ncol=2)) +
+  guides(fill=guide_legend(title="", label.position="left", ncol=1)) +
   theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
-  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,1), legend.position = c(1,1), legend.background=element_blank())
+  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,0), legend.position = c(1,0), legend.background=element_blank())
 
-raceOrgan <- meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>%
-  ggplot(., aes(x = finalOrgan, y = value, fill = strictestRace)) +
+raceOrgan <- raceSummary %>% group_by(finalOrgan, strictestRace) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalOrgan, strictestRace)) %>% as.data.frame %>%
+# raceOrgan <- meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>%
+  ggplot(., aes(x = fct_rev(finalOrgan), y = value, fill = strictestRace)) +
   geom_bar(stat="identity") +
   xlab("Sampled tissue") +
   ylab("Samples") +
+  coord_flip() +
   scale_fill_race(name="US Census\nTerm)") +
   guides(fill=guide_legend(title="", label.position="left")) +
   theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
-  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,1), legend.position = c(1,1), legend.background=element_blank())
+  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,0), legend.position = c(1,0), legend.background=element_blank())
 
 geoOrgan + raceOrgan +
-  plot_layout(design=wide2Design)
-ggsave("fig3_organ_by_descriptor.pdf")
-ggsave("fig3_organ_by_descriptor.png")
+  plot_layout(design=long2Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig3_organ_by_descriptor.pdf", height=8, width=6)
+ggsave("fig3_organ_by_descriptor.png", height=8, width=6)
 
-# If we want to plot by worldRegion we should filter out some of the smaller ones, because they're pointless. How about we only keep anything with >100 samples submitted?
+# And now filtering to only those tissues with more than 50 observations
 
+geoOrganSlim <- geographySummary %>% group_by(finalOrgan, strictestGeography) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalOrgan, strictestGeography)) %>% group_by(finalOrgan) %>% filter(sum(value) > 99) %>% as.data.frame %>%
+# geoOrgan <- meltGeography %>% drop_na(c(finalOrgan, strictestGeography)) %>%
+  ggplot(., aes(x = finalOrgan, y = value, fill = strictestGeography)) +
+  geom_bar(stat="identity") +
+  xlab(NULL) +
+  ylab("Samples") +
+  # coord_flip() +
+  scale_fill_geography(name="Population\nDescriptor") +
+  guides(fill=guide_legend(title="", label.position="left", ncol=3)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
+  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,1), legend.position = c(1,1), legend.background=element_blank())
+
+raceOrganSlim <- raceSummary %>% group_by(finalOrgan, strictestRace) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalOrgan, strictestRace)) %>% group_by(finalOrgan) %>% filter(sum(value) > 99) %>% as.data.frame %>%
+# raceOrgan <- meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>%
+  ggplot(., aes(x = finalOrgan, y = value, fill = strictestRace)) +
+  geom_bar(stat="identity") +
+  xlab(NULL) +
+  ylab("Samples") +
+  # coord_flip() +
+  scale_fill_race(name="US Census\nTerm)") +
+  guides(fill=guide_legend(title="", label.position="left", ncol=2)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
+  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,1), legend.position = c(1,1), legend.background=element_blank())
+
+geoOrganSlim + raceOrganSlim +
+  plot_layout(design=wide2Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig3_organ_by_descriptor_slim.pdf", width = 7, height = 4.5)
+ggsave("fig3_organ_by_descriptor_slim.png", width = 7, height = 4.5)
+
+# Some statistics: The percentage of samples that each tissue accounts for, and how many descriptors are associated:
+allSRAFinal %>% count(hasDescriptor, finalOrgan) %>% group_by(hasDescriptor) %>% summarise(finalOrgan = finalOrgan, n = n, proportion = n/sum(n)) %>% as.data.frame
+
+allSRAFinal %>% count(finalOrgan, strictestGeography) %>% drop_na(strictestGeography) %>% group_by(finalOrgan) %>% summarise(geoGroups = length(finalOrgan)) %>% arrange(desc(geoGroups)) %>% as.data.frame
+  
+allSRAFinal %>% count(finalOrgan, strictestRace) %>% drop_na(strictestRace) %>% group_by(finalOrgan) %>% summarise(raceGroups = length(finalOrgan)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+
+# And how many tissues is each descriptor associated with?
+allSRAFinal %>% drop_na(strictestGeography, finalOrgan) %>% count(finalOrgan) 
+allSRAFinal %>% drop_na(strictestRace, finalOrgan) %>% count(finalOrgan) 
+
+23/28
+36/37
+
+allSRAFinal %>% count(finalOrgan, strictestGeography) %>% drop_na(strictestGeography) %>% group_by(strictestGeography) %>% summarise(geoGroups = length(strictestGeography)) %>% arrange(desc(geoGroups)) %>% as.data.frame
+  
+allSRAFinal %>% count(finalOrgan, strictestRace) %>% drop_na(strictestRace) %>% group_by(strictestRace) %>% summarise(raceGroups = length(strictestRace)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+
+# And now some alluvial plots, for funsies and supplementary data:
 allSRAFinal %>% drop_na(strictestGeography) %>% count(worldRegion)
 allSRAFinal %>% drop_na(strictestRace) %>% count(worldRegion)
 
-geoTissueFacet <- meltGeography %>% drop_na(c(finalOrgan, strictestGeography, worldRegion)) %>% filter(!grepl("Latin|South", worldRegion)) %>%
+geoTissueFacet <- geographySummary %>% group_by(finalOrgan, strictestGeography, worldRegion) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalOrgan, strictestGeography, worldRegion)) %>% as.data.frame %>%
   ggplot(., aes(x = finalOrgan, y = value, fill = strictestGeography)) +
   geom_bar(stat="identity") +
   ggtitle("Samples with geographic/ancestry labels deposited in:") +
@@ -518,15 +613,16 @@ geoTissueFacet <- meltGeography %>% drop_na(c(finalOrgan, strictestGeography, wo
   ylab("Samples") +
   scale_fill_geography(name="Population\nDescriptor") +
   guides(fill=guide_legend(title="", nrow=2)) +
-  theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal") +
   theme(strip.background = element_blank()) +
   facet_wrap(~worldRegion, ncol=1, scales="free_y")
 
 geoTissueFacet
-ggsave("fig3_organ_by_geography_faceted.pdf")
+ggsave("fig3_organ_by_geography_faceted.pdf", width=6, height=9)
+ggsave("fig3_organ_by_geography_faceted.png", width=6, height=9)
 
-raceTissueFacet <- meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>% filter(!grepl("Middle", worldRegion)) %>%
+raceTissueFacet <- raceSummary %>% group_by(finalOrgan, strictestRace, worldRegion) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalOrgan, strictestRace, worldRegion)) %>% as.data.frame %>%
   ggplot(., aes(x = finalOrgan, y = value, fill = strictestRace)) +
   geom_bar(stat="identity") +
   ggtitle("Samples with US Census labels deposited in:") +
@@ -534,13 +630,14 @@ raceTissueFacet <- meltRace %>% drop_na(c(finalOrgan, strictestRace)) %>% filter
   ylab("Samples") +
   scale_fill_race(name="US Census\nTerm)") +
   guides(fill=guide_legend(title="")) +
-  theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal") +
   theme(strip.background = element_blank()) +
   facet_wrap(~worldRegion, ncol=1, scales="free_y")
 
 raceTissueFacet
-ggsave("fig3_organ_by_race_faceted.pdf")
+ggsave("fig3_organ_by_race_faceted.pdf", width=6, height=9)
+ggsave("fig3_organ_by_race_faceted.png", width=6, height=9)
 
 ```
 
@@ -604,135 +701,214 @@ chisq.test(allPropGeo[,2:ncol(allPropGeo)])
 ## 3.5. What about diseases? Are there associations between place and type?
 
 ```{r first-pass-disease-1, out.width="100%"}
-geographySummary <- allSRAFinal %>% count(strictestGeography, finalOrgan, finalDisease, worldRegion)
-raceSummary <- allSRAFinal %>% count(strictestRace, finalOrgan, finalDisease, worldRegion)
-
-meltGeography <- melt(geographySummary)
-meltRace <- melt(raceSummary)
-
-geoDisease <- meltGeography %>% drop_na(c(finalDisease, strictestGeography)) %>%
-  ggplot(., aes(x = finalDisease, y = value, fill = strictestGeography)) +
+geoDisease <- geographySummary %>% group_by(finalDisease, strictestGeography) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalDisease, strictestGeography)) %>% as.data.frame %>%
+# geoDisease <- meltGeography %>% drop_na(c(finalDisease, strictestGeography)) %>%
+  ggplot(., aes(x = fct_rev(finalDisease), y = value, fill = strictestGeography)) +
   geom_bar(stat="identity") +
   xlab("") +
   ylab("Samples") +
+  coord_flip() +
   scale_fill_geography(name="Population\nDescriptor") +
-  guides(fill=guide_legend(title="", label.position="left", ncol=2)) +
+  guides(fill=guide_legend(title="", label.position="left", ncol=1)) +
   theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
-  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,1), legend.position = c(1,1), legend.background=element_blank())
+  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,0), legend.position = c(1,0), legend.background=element_blank())
 
-raceDisease <- meltRace %>% drop_na(c(finalDisease, strictestRace)) %>%
-  ggplot(., aes(x = finalDisease, y = value, fill = strictestRace)) +
+raceDisease <- raceSummary %>% group_by(finalDisease, strictestRace) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalDisease, strictestRace)) %>% as.data.frame %>%
+# raceDisease <- meltRace %>% drop_na(c(finalDisease, strictestRace)) %>%
+  ggplot(., aes(x = fct_rev(finalDisease), y = value, fill = strictestRace)) +
   geom_bar(stat="identity") +
-  xlab("Sampled disease") +
+  xlab("Sampled tissue") +
   ylab("Samples") +
+  coord_flip() +
   scale_fill_race(name="US Census\nTerm)") +
   guides(fill=guide_legend(title="", label.position="left")) +
   theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
-  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,1), legend.position = c(1,1), legend.background=element_blank())
+  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,0), legend.position = c(1,0), legend.background=element_blank())
 
 geoDisease + raceDisease +
-  plot_layout(design=wide2Design)
-ggsave("fig3_Disease_by_descriptor.pdf")
-ggsave("fig3_Disease_by_descriptor.png")
+  plot_layout(design=long2Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig4_disease_by_descriptor.pdf", height=8, width=6)
+ggsave("fig4_disease_by_descriptor.png", height=8, width=6)
 
-# If we want to plot by worldRegion we should filter out some of the smaller ones, because they're pointless. How about we only keep anything with >100 samples submitted?
+# And now filtering to only those tissues with more than 50 observations
 
-geoDiseaseFacet <- meltGeography %>% drop_na(c(finalDisease, strictestGeography, worldRegion)) %>% filter(!grepl("Latin|South", worldRegion)) %>%
+geoDiseaseSlim <- geographySummary %>% group_by(finalDisease, strictestGeography) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalDisease, strictestGeography)) %>% group_by(finalDisease) %>% filter(sum(value) > 9) %>% as.data.frame %>%
+# geoDisease <- meltGeography %>% drop_na(c(finalDisease, strictestGeography)) %>%
+  ggplot(., aes(x = finalDisease, y = value, fill = strictestGeography)) +
+  geom_bar(stat="identity") +
+  xlab(NULL) +
+  ylab("Samples") +
+  # coord_flip() +
+  scale_fill_geography(name="Population\nDescriptor") +
+  guides(fill=guide_legend(title="", label.position="left", ncol=3)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
+  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,1), legend.position = c(1,1), legend.background=element_blank())
+
+raceDiseaseSlim <- raceSummary %>% group_by(finalDisease, strictestRace) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalDisease, strictestRace)) %>% group_by(finalDisease) %>% filter(sum(value) > 9) %>% as.data.frame %>%
+# raceDisease <- meltRace %>% drop_na(c(finalDisease, strictestRace)) %>%
+  ggplot(., aes(x = finalDisease, y = value, fill = strictestRace)) +
+  geom_bar(stat="identity") +
+  xlab(NULL) +
+  ylab("Samples") +
+  # coord_flip() +
+  scale_fill_race(name="US Census\nTerm)") +
+  guides(fill=guide_legend(title="", label.position="left", ncol=2)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
+  theme(legend.title = element_blank(), legend.direction = "vertical", legend.justification = c(1,1), legend.position = c(1,1), legend.background=element_blank())
+
+geoDiseaseSlim + raceDiseaseSlim +
+  plot_layout(design=wide2Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig4_disease_by_descriptor_slim.pdf", width = 7, height = 4.5)
+ggsave("fig4_disease_by_descriptor_slim.png", width = 7, height = 4.5)
+
+# Some statistics: The percentage of samples that each tissue accounts for, and how many descriptors are associated:
+allSRAFinal %>% count(hasDescriptor, finalDisease) %>% group_by(hasDescriptor) %>% summarise(finalDisease = finalDisease, n = n, proportion = n/sum(n)) %>% as.data.frame
+
+allSRAFinal %>% count(worldRegion, finalDisease) %>% group_by(worldRegion) %>% summarise(finalDisease = finalDisease, n = n, proportion = n/sum(n)) %>% arrange(finalDisease) %>% as.data.frame
+
+allSRAFinal %>% count(worldRegion, finalDisease) %>% group_by(finalDisease) %>% summarise(worldRegion = worldRegion, n = n, proportion = n/sum(n)) %>% arrange(finalDisease) %>% as.data.frame
+
+allSRAFinal %>% count(finalDisease, strictestGeography) %>% drop_na(strictestGeography) %>% group_by(finalDisease) %>% summarise(geoGroups = length(finalDisease)) %>% arrange(desc(geoGroups)) %>% as.data.frame
+  
+allSRAFinal %>% count(finalDisease, strictestRace) %>% drop_na(strictestRace) %>% group_by(finalDisease) %>% summarise(raceGroups = length(finalDisease)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+
+# And how many tissues is each descriptor associated with?
+allSRAFinal %>% drop_na(strictestGeography, finalDisease) %>% count(finalDisease) 
+allSRAFinal %>% drop_na(strictestRace, finalDisease) %>% count(finalDisease) 
+
+allSRAFinal %>% count(finalDisease, strictestGeography) %>% drop_na(strictestGeography) %>% group_by(strictestGeography) %>% summarise(geoGroups = length(strictestGeography)) %>% arrange(desc(geoGroups)) %>% as.data.frame
+  
+allSRAFinal %>% count(finalDisease, strictestRace) %>% drop_na(strictestRace) %>% group_by(strictestRace) %>% summarise(raceGroups = length(strictestRace)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+
+# And now some alluvial plots, for funsies and supplementary data:
+geoDiseaseFacet <- geographySummary %>% group_by(finalDisease, strictestGeography, worldRegion) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalDisease, strictestGeography, worldRegion)) %>% as.data.frame %>%
   ggplot(., aes(x = finalDisease, y = value, fill = strictestGeography)) +
   geom_bar(stat="identity") +
   ggtitle("Samples with geographic/ancestry labels deposited in:") +
-  xlab("Sampled disease") +
+  xlab("Sampled tissue") +
   ylab("Samples") +
   scale_fill_geography(name="Population\nDescriptor") +
   guides(fill=guide_legend(title="", nrow=2)) +
-  theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal") +
   theme(strip.background = element_blank()) +
   facet_wrap(~worldRegion, ncol=1, scales="free_y")
 
 geoDiseaseFacet
-ggsave("fig3_Disease_by_geography_faceted.pdf")
+ggsave("fig4_disease_by_geography_faceted.pdf", width=6, height=9)
+ggsave("fig4_disease_by_geography_faceted.png", width=6, height=9)
 
-raceDiseaseFacet <- meltRace %>% drop_na(c(finalDisease, strictestRace)) %>% filter(!grepl("Middle", worldRegion)) %>%
+raceDiseaseFacet <- raceSummary %>% group_by(finalDisease, strictestRace, worldRegion) %>% summarise(value = sum(n)) %>% distinct() %>% drop_na(c(finalDisease, strictestRace, worldRegion)) %>% as.data.frame %>%
   ggplot(., aes(x = finalDisease, y = value, fill = strictestRace)) +
   geom_bar(stat="identity") +
   ggtitle("Samples with US Census labels deposited in:") +
-  xlab("Sampled disease") +
+  xlab("Sampled tissue") +
   ylab("Samples") +
   scale_fill_race(name="US Census\nTerm)") +
   guides(fill=guide_legend(title="")) +
-  theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal") +
   theme(strip.background = element_blank()) +
   facet_wrap(~worldRegion, ncol=1, scales="free_y")
 
 raceDiseaseFacet
-ggsave("fig3_Disease_by_race_faceted.pdf")
+ggsave("fig4_disease_by_race_faceted.pdf", width=6, height=9)
+ggsave("fig4_disease_by_race_faceted.png", width=6, height=9)
+
 ```
 
 ## 4. Attempting to look at some of the relationships between classes:
 
 What we really want to get to is the relationship between tissue and disease, because we think it might be interesting.
 
-First, without worrying about how a sample was described, simply, who sequenced it and why?
-
 ```{r combine-all-levels-1, out.width="100%"}
-# Let's filter to tissues with more than 50 observations?
-tissuesToKeep <- allSRAFinal %>% count(finalOrgan) %>% filter(n >= 200)
+# Let's collapse tissues with under 100 observations and diseases with under 10 into "Other"
 geoTissuesToKeep <- allSRAFinal %>% drop_na(strictestGeography) %>% count(finalOrgan) %>% filter(n >= 100)
 raceTissuesToKeep <- allSRAFinal %>% drop_na(strictestRace) %>% count(finalOrgan) %>% filter(n >= 100)
 
-allAlluvial <- allSRAFinal %>% count(worldRegion, finalOrgan, finalDisease) %>% filter(grepl(paste(tissuesToKeep$finalOrgan, collapse="|"), finalOrgan)) %>% drop_na(c(worldRegion, finalOrgan, finalDisease)) %>% 
-  ggplot(data = .,
-       aes(axis3 = worldRegion, axis2 = finalOrgan, axis1 = finalDisease, y = n)) +
-  scale_x_discrete(limits = c("Disease class", "Tissue sequenced", "SRA Submitter Region"), expand = c(.2, .05)) +
-  geom_alluvium(aes(fill = worldRegion)) +
-  geom_stratum(width=1/4) +
-  # scale_fill_viridis(discrete = TRUE) +
-  ylab("Samples") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
-  coord_flip() +
-  theme_minimal(base_size = 6) +
-  theme(legend.position = "bottom") +
-  guides(fill=guide_legend(title=""))
+geoDiseasesToKeep <- allSRAFinal %>% drop_na(strictestGeography) %>% count(finalDisease) %>% filter(n >= 10)
+raceDiseasesToKeep <- allSRAFinal %>% drop_na(strictestRace) %>% count(finalDisease) %>% filter(n >= 10)
 
-allAlluvial
-ggsave("fig4_all_samples_alluvial.pdf", width = 9, height = 4)
-
-geoDisAlluvial <- allSRAFinal %>% drop_na(c(strictestGeography, worldRegion, finalOrgan, finalDisease)) %>% count(worldRegion, strictestGeography, finalOrgan, finalDisease) %>% filter(grepl(paste(geoTissuesToKeep$finalOrgan, collapse="|"), finalOrgan)) %>%  
-  ggplot(data = .,
-       aes(axis3 = worldRegion, axis2 = finalOrgan, axis1 = finalDisease, y = n)) +
-  scale_x_discrete(limits = c("Disease class", "Tissue sequenced", "SRA Submitter Region"), expand = c(.2, .05)) +
+geoDisAlluvial <- allSRAFinal %>% drop_na(c(strictestGeography, worldRegion, finalOrgan, finalDisease)) %>% count(worldRegion, strictestGeography, finalOrgan, finalDisease) %>%
+filter(grepl(paste(geoTissuesToKeep$finalOrgan, collapse="|"), finalOrgan)) %>%  
+filter(grepl(paste(geoDiseasesToKeep$finalDisease, collapse="|"), finalDisease)) %>%  
+    ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Submitter\nWBER", "Disease class", "Tissue sequenced"), expand = c(.2, .05)) +
   geom_alluvium(aes(fill = strictestGeography)) +
   scale_fill_geography() +
   geom_stratum(width=1/4) +
   ylab("Samples") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
-  coord_flip() +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
   theme_minimal(base_size = 6) +
-  guides(fill=guide_legend(title="Descriptor", nrow=1)) +
+  guides(fill=guide_legend(title="Descriptor", nrow=2)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
 
-geoDisAlluvial
-ggsave("fig4_geography_disease_alluvial.pdf", width = 9, height = 4)
-
-raceDisAlluvial <- allSRAFinal %>% drop_na(c(strictestRace, worldRegion, finalOrgan, finalDisease)) %>% count(worldRegion, strictestRace, finalOrgan, finalDisease) %>% filter(grepl(paste(raceTissuesToKeep$finalOrgan, collapse="|"), finalOrgan)) %>%  
-  ggplot(data = .,
-       aes(axis3 = worldRegion, axis2 = finalOrgan, axis1 = finalDisease, y = n)) +
-  scale_x_discrete(limits = c("Disease class", "Tissue sequenced", "SRA Submitter Region"), expand = c(.2, .05)) +
+raceDisAlluvial <- allSRAFinal %>% drop_na(c(strictestRace, worldRegion, finalOrgan, finalDisease)) %>% count(worldRegion, strictestRace, finalOrgan, finalDisease) %>% 
+  filter(grepl(paste(raceTissuesToKeep$finalOrgan, collapse="|"), finalOrgan)) %>%  
+  filter(grepl(paste(raceDiseasesToKeep$finalDisease, collapse="|"), finalDisease)) %>%  
+ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Submitter\nWBER", "Tissue sequenced", "Disease class"), expand = c(.2, .05)) +
   geom_alluvium(aes(fill = strictestRace)) +
   scale_fill_race() +
   geom_stratum(width=1/4) +
   ylab("Samples") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
-  coord_flip() +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
   theme_minimal(base_size = 6) +
-  guides(fill=guide_legend(title="Descriptor", nrow=1)) +
+  guides(fill=guide_legend(title="Descriptor", nrow=2)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
 
-raceDisAlluvial
-ggsave("fig4_race_disease_alluvial.pdf", width = 9, height = 4)
+geoDisAlluvial + raceDisAlluvial +
+  plot_layout(design=long2Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig4_organ_disease_alluvial.pdf", width = 7, height = 7)
 
+geoDisAlluvial <- allSRAFinal %>% drop_na(c(strictestGeography, worldRegion, finalOrgan, finalDisease)) %>% count(worldRegion, strictestGeography, finalOrgan, finalDisease) %>%
+    ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Submitter\nWBER", "Disease class", "Tissue sequenced"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = strictestGeography)) +
+  scale_fill_geography() +
+  geom_stratum(width=1/4) +
+  ylab("Samples") +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
+  theme_minimal(base_size = 6) +
+  guides(fill=guide_legend(title="Descriptor", nrow=2)) +
+  theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
+
+geoDisAlluvial
+ggsave("fig4_organ_disease_geo_alluvial_full.pdf", width = 7, height = 7)
+ggsave("fig4_organ_disease_geo_alluvial_full.png", width = 7, height = 7)
+
+
+raceDisAlluvial <- allSRAFinal %>% drop_na(c(strictestRace, worldRegion, finalOrgan, finalDisease)) %>% count(worldRegion, strictestRace, finalOrgan, finalDisease) %>% 
+ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Submitter\nWBER", "Tissue sequenced", "Disease class"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = strictestRace)) +
+  scale_fill_race() +
+  geom_stratum(width=1/4) +
+  ylab("Samples") +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
+  theme_minimal(base_size = 6) +
+  guides(fill=guide_legend(title="Descriptor", nrow=2)) +
+  theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
+
+raceDisAlluvial 
+ggsave("fig4_organ_disease_race_alluvial_full.pdf", width = 7, height = 7)
+ggsave("fig4_organ_disease_race_alluvial_full.png", width = 7, height = 7)
+
+geoDisAlluvial + raceDisAlluvial +
+  plot_layout(design=long2Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig4_organ_disease_alluvial_full.pdf", width = 7, height = 7)
 ```
 
 And finally... the numbers that underlie these plots, because otherwise I'll go crazy trying to tabulate things:
