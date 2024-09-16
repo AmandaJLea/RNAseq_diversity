@@ -23,6 +23,8 @@ library(RColorBrewer)
 library(ggrepel)
 library(viridis)
 library(thematic)
+library(scales)
+
 options(device = "quartz")
 
 allSRAFinal <- readRDS("20240901_allSRAFinal.rds")
@@ -240,6 +242,39 @@ geobyStudy + racebyStudy +
   plot_annotation(tag_levels = 'A') 
 ggsave("fig2_by_study_boxplot.pdf", width=7, height=7)
 ggsave("fig2_by_study_boxplot.png", width=7, height=7)
+
+geobyStudy <- ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fill=strictestGeography)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=1.2, width=0.2, color="#333333") +
+  ggtitle("Submitted descriptor\n(ancestral/geographic origin)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  annotation_logticks(sides="l") +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 30, hjust=1)) +
+  theme(legend.position = "none") +
+  theme(axis.text=element_text(size=10))
+
+racebyStudy <- ggplot(meltSampleRace, aes(x = strictestRace, y=value,fill=strictestRace)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Submitted descriptor\n(US Census term)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  annotation_logticks(sides="l") +
+  scale_fill_race() +
+  theme(axis.text.x = element_text(angle = 30, hjust=1)) +
+  theme(legend.position = "none") +
+  theme(axis.text=element_text(size=10))
+
+geobyStudy + racebyStudy +
+  plot_layout(design = wide2Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig2_by_study_boxplot_for_talk.pdf", width=7, height=6)
+ggsave("fig2_by_study_boxplot_for_talk.png", width=7, height=6)
+
 ```
 
 Let's get some meaningful statistics on this:
@@ -339,8 +374,10 @@ ggplot(., aes(x = fct_rev(fct_infreq(worldRegion)), y=value, fill = strictestRac
   theme(legend.title.align = 1, legend.direction = "vertical", legend.justification = c(1,0), legend.position = c(1,0), legend.background=element_blank())
 
 geoByRegion + raceByRegion +
-    plot_layout(design = long2Design)
-ggsave("fig2_by_region.pdf")
+    plot_layout(design = long2Design) +
+    plot_annotation(tag_levels = 'A')
+ggsave("fig2_by_region.pdf", width=7, height=4)
+ggsave("fig2_by_region.png", width=7, height=4)
 
 studybyRegion <- allSRAFinal %>% count(SRA.Study, worldRegion) %>% drop_na(worldRegion) %>% 
   ggplot(., aes(x = worldRegion, y=n,fill=worldRegion)) +
@@ -613,7 +650,7 @@ geoTissueFacet <- geographySummary %>% group_by(finalOrgan, strictestGeography, 
   ylab("Samples") +
   scale_fill_geography(name="Population\nDescriptor") +
   guides(fill=guide_legend(title="", nrow=2)) +
-  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
+  theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal") +
   theme(strip.background = element_blank()) +
   facet_wrap(~worldRegion, ncol=1, scales="free_y")
@@ -630,7 +667,7 @@ raceTissueFacet <- raceSummary %>% group_by(finalOrgan, strictestRace, worldRegi
   ylab("Samples") +
   scale_fill_race(name="US Census\nTerm)") +
   guides(fill=guide_legend(title="")) +
-  theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=1)) +
+  theme(axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal") +
   theme(strip.background = element_blank()) +
   facet_wrap(~worldRegion, ncol=1, scales="free_y")
