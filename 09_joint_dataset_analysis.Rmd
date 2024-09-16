@@ -33,7 +33,7 @@ options(device = "quartz")
 
 allSRAFinal <- readRDS("20240901_allSRAFinal_for_plotting.rds")
 dbGapFinal <- readRDS("20240731_dbgap_final.rds")
-litRevFinal <- readRDS("20240812_manual_final.rds")
+litRevFinal <- readRDS("20240916_manual_final.rds")
 
 ```
 
@@ -65,8 +65,12 @@ scale_fill_dbGap <- function(...){
 ```{r plotting-prep-1}
 # SRA and manual colours:
 
-# First let's fix Sub-Saharan:
-litRevFinal$finalGeo <- gsub("Subsaharan Africa", "Sub-Saharan Africa", litRevFinal$finalGeo)
+# First let's fix Sub-Saharan and set the unknowns to NA so we don't break the plots.
+litRevFinal <- litRevFinal %>% 
+  mutate(finalGeo = gsub("Subsaharan Africa", "Sub-Saharan Africa", finalGeo)) %>%
+  mutate(finalGeo = gsub("Unknown", NA, finalGeo)) %>%
+  mutate(finalRace = gsub("Unknown", NA, finalRace))
+
 litRevFinal$finalGeo <- factor(litRevFinal$finalGeo, levels = c("Sub-Saharan Africa", "Europe", "South Asia","East Asia", "Asia (NOS)"))
 
 scale_fill_geography <- function(...){
@@ -131,6 +135,11 @@ fiveLongDesign <- "
   3#
 "
 
+wide3Design <- "
+  1
+  2
+  3
+"
 
 theme_set(theme_bw(base_size = 6))
 theme_update(axis.text=element_text(size=7))
@@ -563,3 +572,55 @@ ggsave("us_census_overrepresentation.png", width = 3, height = 5)
 ```
 
 Much easier...
+
+And now, remaking the plot of samples by study across SRA and dbGaP
+
+```{r samples-by-study}
+sampleGeography <- allSRAFinal %>% count(SRA.Study, strictestGeography) %>% drop_na(strictestGeography)
+sampleRace <- allSRAFinal %>% count(SRA.Study, strictestRace) %>% drop_na(strictestRace)
+meltSampleGeography <- melt(sampleGeography)
+meltSampleRace <- melt(sampleRace)
+
+geobyStudy <- ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fill=strictestGeography)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Submitted SRA descriptor\n(ancestral/geographic origin)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+racebyStudy <- ggplot(meltSampleRace, aes(x = strictestRace, y=value,fill=strictestRace)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Submitted SRA descriptor\n(US Census term)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_race() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+dbGapbyStudy <- dbGapFinal %>% filter(value > 0) %>%
+  ggplot(., aes(x = variable, y=value,fill=variable)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Reported dbGaP descriptor\n(GrafPop term)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_dbGap() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+geobyStudy + racebyStudy + dbGapbyStudy +
+  plot_layout(design = wide3Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig2_by_study_boxplot_all.pdf", width=6.5, height=8)
+ggsave("fig2_by_study_boxplot_all.png", width=6.5, height=8)
+
+
+
+```
