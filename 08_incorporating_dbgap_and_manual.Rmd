@@ -86,26 +86,30 @@ saveRDS(dbgapMelt, file="20240731_dbgap_final.rds")
 Next up, the manual curation one. Grace confirmed that this is the right file, as it's been filtered down to individual level counts, and there's no need to worry about tissues.  
 
 ```{r recountSimple-cleanup}
-litRevSimple <- read.csv("20240812_LitReviewinfo_NoNA_simple.csv") # Actual data
+litRevSimple <- read.csv("20240916_LitReviewFinalFinal_Merged.csv") # Actual data
 litRevAncestries <- read.csv("20240731_manual_population_descriptors.csv") # Pop descriptors, but need to be switched to upper case... we do this for both things to ensure they're consistent:
 
 litRevAncestries$ReportedT <- str_to_title(litRevAncestries$ReportedT)
 litRevSimple$ReportedT <- str_to_title(litRevSimple$ReportedT)
 
 litRevSimple <- litRevSimple %>% 
-  mutate(tempRace = ifelse(ReportedS == "race", ReportedT, NA)) %>% 
-  mutate(tempGeo = ifelse(ReportedS == "ancestry", ReportedT, NA))         
+  mutate(tempRace = ifelse(InterpretS == "race", ReportedT, NA)) %>% 
+  mutate(tempGeo = ifelse(InterpretS == "geography", ReportedT, NA))         
 
-litRevRace <- litRevAncestries[litRevAncestries$ReportedS %in% "race",] 
-litRevGeo <- litRevAncestries[litRevAncestries$ReportedS %in% "ancestry",]
+litRevRace <- litRevAncestries[litRevAncestries$InterpretS %in% "race",] 
+litRevGeo <- litRevAncestries[litRevAncestries$InterpretS %in% "geography",]
 
 litRevSimple$finalRace <- litRevRace[match(litRevSimple$tempRace, litRevRace$ReportedT, incomparables = NA, nomatch = NA),]$InterpretT
 litRevSimple$finalGeo <- litRevGeo[match(litRevSimple$tempGeo, litRevGeo$ReportedT, incomparables = NA, nomatch = NA),]$InterpretT
 
-litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),] # Of these three, only one is plottable, so we fix that one manually:
+litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),] # Gotta fix all of the hispanic samples, and decide what to do with the Unknowns - I prefer not to plot those? 
 
-litRevSimple[litRevSimple$recount3 %in% "SRP114956",]$finalRace <- "Black or African American"
+litRevSimple <- litRevSimple %>%
+  mutate(finalRace = ifelse(InterpretT == "hispanic", "hispanic", finalRace)) %>%
+  mutate(finalRace = ifelse(is.na(finalRace) & grepl("SRP079684|SRP136469|SRP187431", recount3) , "Unknown", finalRace)) %>% 
+  mutate(finalGeo = ifelse(is.na(finalGeo) & grepl("SRP144647", recount3), "Unknown", finalGeo))
 
+litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),] # Gotta fix all of the hispanic samples, to 
 # We gotta standardise this so it can use the same colour schemes as the SRA files, which means a bit of renaming of columns:
 
 litRevSimple <- litRevSimple %>%
@@ -116,6 +120,34 @@ litRevSimple <- litRevSimple %>%
   mutate(finalRace = gsub("multiple", "Multiple", finalRace)) %>%
   mutate(finalGeo = if_else(grepl("hispanic", finalGeo), NA, finalGeo))
 
+# And let's sanity check this against the numbers Grace has in other tabs of the file, and in the paper. Total number of inds should be 3407
+
+litRevSimple %>%  
+  summarise(totalInds = sum(individs)) # Correct
+
+# Breakdown by ancestry:
+litRevSimple %>% filter(InterpretS == "geography") %>% 
+  summarise(totalInds = sum(individs)) # Correct
+
+litRevSimple %>% filter(!is.na(finalGeo)) %>% 
+  summarise(totalInds = sum(individs)) # Correct, expect 2143
+
+# Breakdown by race:
+litRevSimple %>% filter(InterpretS == "race") %>% 
+  summarise(totalInds = sum(individs)) # Correct
+
+litRevSimple %>% filter(!is.na(finalRace)) %>% 
+  summarise(totalInds = sum(individs)) # Correct, expect 1264
+
+# And now quick tabulating breakdowns:
+litRevSimple %>% filter(!is.na(finalGeo)) %>% 
+  group_by(finalGeo) %>% 
+  summarise(totalInds = sum(individs)) # Correct, expect 2143
+  
+litRevSimple %>% filter(!is.na(finalRace)) %>% 
+  group_by(finalRace) %>% 
+  summarise(totalInds = sum(individs)) # Correct, expect 2143
+
 # And now we basically have a melted dataframe already! 
-saveRDS(litRevSimple, file="20240812_manual_final.rds")
+saveRDS(litRevSimple, file="20240916_manual_final.rds")
 ```

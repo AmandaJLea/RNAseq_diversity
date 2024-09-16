@@ -219,52 +219,67 @@ dbgapMelt &lt;- melt(dbgap[,c(1:18,22,24,26,28)], id=names(dbgap)[c(10:18,22,24,
 # And now a bit of cleaning:
 dbgapMelt &lt;- dbgapMelt %&gt;%
   mutate(variable = gsub(&quot;_&quot;, &quot; &quot;, variable)) %&gt;%
-  mutate(variable = gsub(&quot;\\.&quot;, &quot; &quot;, variable))
-  
+  mutate(variable = gsub(&quot;\\.&quot;, &quot; &quot;, variable)) %&gt;%
+  mutate(variable = gsub(&quot;or &quot;, &quot;or\n&quot;, variable)) 
+
 dbgapMelt %&gt;%
   group_by(variable) %&gt;%
   summarise(sum(value))</code></pre>
 <pre><code>## # A tibble: 9 × 2
-##   variable                        `sum(value)`
-##   &lt;chr&gt;                                  &lt;int&gt;
-## 1 African                                  368
-## 2 African American                       10529
-## 3 East Asian                              1081
-## 4 European                               29607
-## 5 HispanicA                               1319
-## 6 HispanicB                               2707
-## 7 Other                                    795
-## 8 Other Asian or Pacific Islander          354
-## 9 South Asian                              262</code></pre>
+##   variable                           `sum(value)`
+##   &lt;chr&gt;                                     &lt;int&gt;
+## 1 &quot;African&quot;                                   368
+## 2 &quot;African American&quot;                        10529
+## 3 &quot;East Asian&quot;                               1081
+## 4 &quot;European&quot;                                29607
+## 5 &quot;HispanicA&quot;                                1319
+## 6 &quot;HispanicB&quot;                                2707
+## 7 &quot;Other&quot;                                     795
+## 8 &quot;Other Asian or\nPacific Islander&quot;          354
+## 9 &quot;South Asian&quot;                               262</code></pre>
 <pre class="r"><code>dbgapMelt$variable &lt;- factor(dbgapMelt$variable)
 
 saveRDS(dbgapMelt, file=&quot;20240731_dbgap_final.rds&quot;)</code></pre>
 <p>Next up, the manual curation one. Grace confirmed that this is the right file, as it’s been filtered down to individual level counts, and there’s no need to worry about tissues.</p>
-<pre class="r"><code>litRevSimple &lt;- read.csv(&quot;20240812_LitReviewinfo_NoNA_simple.csv&quot;) # Actual data
+<pre class="r"><code>litRevSimple &lt;- read.csv(&quot;20240916_LitReviewFinalFinal_Merged.csv&quot;) # Actual data
 litRevAncestries &lt;- read.csv(&quot;20240731_manual_population_descriptors.csv&quot;) # Pop descriptors, but need to be switched to upper case... we do this for both things to ensure they&#39;re consistent:
 
 litRevAncestries$ReportedT &lt;- str_to_title(litRevAncestries$ReportedT)
 litRevSimple$ReportedT &lt;- str_to_title(litRevSimple$ReportedT)
 
 litRevSimple &lt;- litRevSimple %&gt;% 
-  mutate(tempRace = ifelse(ReportedS == &quot;race&quot;, ReportedT, NA)) %&gt;% 
-  mutate(tempGeo = ifelse(ReportedS == &quot;ancestry&quot;, ReportedT, NA))         
+  mutate(tempRace = ifelse(InterpretS == &quot;race&quot;, ReportedT, NA)) %&gt;% 
+  mutate(tempGeo = ifelse(InterpretS == &quot;geography&quot;, ReportedT, NA))         
 
-litRevRace &lt;- litRevAncestries[litRevAncestries$ReportedS %in% &quot;race&quot;,] 
-litRevGeo &lt;- litRevAncestries[litRevAncestries$ReportedS %in% &quot;ancestry&quot;,]
+litRevRace &lt;- litRevAncestries[litRevAncestries$InterpretS %in% &quot;race&quot;,] 
+litRevGeo &lt;- litRevAncestries[litRevAncestries$InterpretS %in% &quot;geography&quot;,]
 
 litRevSimple$finalRace &lt;- litRevRace[match(litRevSimple$tempRace, litRevRace$ReportedT, incomparables = NA, nomatch = NA),]$InterpretT
 litRevSimple$finalGeo &lt;- litRevGeo[match(litRevSimple$tempGeo, litRevGeo$ReportedT, incomparables = NA, nomatch = NA),]$InterpretT
 
-litRevSimple[is.na(litRevSimple$finalGeo) &amp; is.na(litRevSimple$finalRace),] # Of these three, only one is plottable, so we fix that one manually:</code></pre>
-<pre><code>##      recount3     lacountry ReportedS          ReportedT individs    samcountry genotypes           tempRace       tempGeo finalRace finalGeo
-## 67  SRP144647     Australia  ancestry      Non-Caucasian       17     Australia       Yes               &lt;NA&gt; Non-Caucasian      &lt;NA&gt;     &lt;NA&gt;
-## 77  SRP187431 United States      race           Nonblack       10 United States        No           Nonblack          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
-## 83  SRP114956 United States      race African‚Äìamerican       23 United States        No African‚Äìamerican          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
-## 101 SRP079684 United States      race            Unknown        3 United States       Yes            Unknown          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;</code></pre>
-<pre class="r"><code>litRevSimple[litRevSimple$recount3 %in% &quot;SRP114956&quot;,]$finalRace &lt;- &quot;Black or African American&quot;
+litRevSimple[is.na(litRevSimple$finalGeo) &amp; is.na(litRevSimple$finalRace),] # Gotta fix all of the hispanic samples, and decide what to do with the Unknowns - I prefer not to plot those? </code></pre>
+<pre><code>##       X  recount3     lacountry ReportedS          ReportedT individs    samcountry genotypes InterpretS InterpretT           tempRace       tempGeo finalRace finalGeo
+## 19   19 SRP043166         Spain      race           Hispanic        6    Unreported       Yes       race   hispanic           Hispanic          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 41   41 SRP079684 United States      race            Unknown        3 United States       Yes       race       &lt;NA&gt;            Unknown          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 49   49 SRP102104 United States      race           Hispanic       31 United States        No       race   hispanic           Hispanic          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 62   62 SRP114956 United States      race           Hispanic       10 United States        No       race   hispanic           Hispanic          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 68   68 SRP128940 United States      race           Hispanic        5 United States        No       race   hispanic           Hispanic          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 75   75 SRP136469         China      race            Unknown        1    unreported        No       race       &lt;NA&gt;            Unknown          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 78   78 SRP144647     Australia  ancestry      Non-Caucasian       17     Australia       Yes  geography       &lt;NA&gt;               &lt;NA&gt; Non-Caucasian      &lt;NA&gt;     &lt;NA&gt;
+## 86   86 SRP150315 United States      race Hispanic Or Latino        2 United States        No       race   hispanic Hispanic Or Latino          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 90   90 SRP151309 United States      race    Hispanic/Latino        5 United States        No       race   hispanic    Hispanic/Latino          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 94   94 SRP159081 United States  ancestry Caucasian/Hispanic        2    unreported       Yes       race   hispanic Caucasian/Hispanic          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 98   98 SRP161704 United States  ancestry           Hispanic        1 United States       Yes       race   hispanic           Hispanic          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;
+## 108 108 SRP187431 United States      race           Nonblack       10 United States        No       race       &lt;NA&gt;           Nonblack          &lt;NA&gt;      &lt;NA&gt;     &lt;NA&gt;</code></pre>
+<pre class="r"><code>litRevSimple &lt;- litRevSimple %&gt;%
+  mutate(finalRace = ifelse(InterpretT == &quot;hispanic&quot;, &quot;hispanic&quot;, finalRace)) %&gt;%
+  mutate(finalRace = ifelse(is.na(finalRace) &amp; grepl(&quot;SRP079684|SRP136469|SRP187431&quot;, recount3) , &quot;Unknown&quot;, finalRace)) %&gt;% 
+  mutate(finalGeo = ifelse(is.na(finalGeo) &amp; grepl(&quot;SRP144647&quot;, recount3), &quot;Unknown&quot;, finalGeo))
 
-# We gotta standardise this so it can use the same colour schemes as the SRA files, which means a bit of renaming of columns:
+litRevSimple[is.na(litRevSimple$finalGeo) &amp; is.na(litRevSimple$finalRace),] # Gotta fix all of the hispanic samples, to </code></pre>
+<pre><code>##  [1] X          recount3   lacountry  ReportedS  ReportedT  individs   samcountry genotypes  InterpretS InterpretT tempRace   tempGeo    finalRace  finalGeo  
+## &lt;0 rows&gt; (or 0-length row.names)</code></pre>
+<pre class="r"><code># We gotta standardise this so it can use the same colour schemes as the SRA files, which means a bit of renaming of columns:
 
 litRevSimple &lt;- litRevSimple %&gt;%
   mutate(finalGeo = gsub(&quot;^Asia$&quot;, &quot;Asia (NOS)&quot;, finalGeo)) %&gt;%
@@ -274,8 +289,61 @@ litRevSimple &lt;- litRevSimple %&gt;%
   mutate(finalRace = gsub(&quot;multiple&quot;, &quot;Multiple&quot;, finalRace)) %&gt;%
   mutate(finalGeo = if_else(grepl(&quot;hispanic&quot;, finalGeo), NA, finalGeo))
 
-# And now we basically have a melted dataframe already! 
-saveRDS(litRevSimple, file=&quot;20240812_manual_final.rds&quot;)</code></pre>
+# And let&#39;s sanity check this against the numbers Grace has in other tabs of the file, and in the paper. Total number of inds should be 3407
+
+litRevSimple %&gt;%  
+  summarise(totalInds = sum(individs)) # Correct</code></pre>
+<pre><code>##   totalInds
+## 1      3407</code></pre>
+<pre class="r"><code># Breakdown by ancestry:
+litRevSimple %&gt;% filter(InterpretS == &quot;geography&quot;) %&gt;% 
+  summarise(totalInds = sum(individs)) # Correct</code></pre>
+<pre><code>##   totalInds
+## 1      2143</code></pre>
+<pre class="r"><code>litRevSimple %&gt;% filter(!is.na(finalGeo)) %&gt;% 
+  summarise(totalInds = sum(individs)) # Correct, expect 2143</code></pre>
+<pre><code>##   totalInds
+## 1      2143</code></pre>
+<pre class="r"><code># Breakdown by race:
+litRevSimple %&gt;% filter(InterpretS == &quot;race&quot;) %&gt;% 
+  summarise(totalInds = sum(individs)) # Correct</code></pre>
+<pre><code>##   totalInds
+## 1      1264</code></pre>
+<pre class="r"><code>litRevSimple %&gt;% filter(!is.na(finalRace)) %&gt;% 
+  summarise(totalInds = sum(individs)) # Correct, expect 1264</code></pre>
+<pre><code>##   totalInds
+## 1      1264</code></pre>
+<pre class="r"><code># And now quick tabulating breakdowns:
+litRevSimple %&gt;% filter(!is.na(finalGeo)) %&gt;% 
+  group_by(finalGeo) %&gt;% 
+  summarise(totalInds = sum(individs)) # Correct, expect 2143</code></pre>
+<pre><code>## # A tibble: 8 × 2
+##   finalGeo          totalInds
+##   &lt;chr&gt;                 &lt;int&gt;
+## 1 Americas                  1
+## 2 Asia (NOS)               23
+## 3 East Asia               347
+## 4 Europe                 1076
+## 5 South Asia              173
+## 6 Southeast Asia           67
+## 7 Subsaharan Africa       439
+## 8 Unknown                  17</code></pre>
+<pre class="r"><code>litRevSimple %&gt;% filter(!is.na(finalRace)) %&gt;% 
+  group_by(finalRace) %&gt;% 
+  summarise(totalInds = sum(individs)) # Correct, expect 2143</code></pre>
+<pre><code>## # A tibble: 8 × 2
+##   finalRace                            totalInds
+##   &lt;chr&gt;                                    &lt;int&gt;
+## 1 &quot;American Indian or\nAlaskan Native&quot;         1
+## 2 &quot;Asian&quot;                                     41
+## 3 &quot;Black or\nAfrican American&quot;               305
+## 4 &quot;Hispanic&quot;                                  62
+## 5 &quot;Multiple&quot;                                  23
+## 6 &quot;Other&quot;                                     55
+## 7 &quot;Unknown&quot;                                   14
+## 8 &quot;White&quot;                                    763</code></pre>
+<pre class="r"><code># And now we basically have a melted dataframe already! 
+saveRDS(litRevSimple, file=&quot;20240916_manual_final.rds&quot;)</code></pre>
 
 
 
