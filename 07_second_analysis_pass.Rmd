@@ -432,6 +432,25 @@ allSRAFinal %>% filter(!is.na(strictestGeography)) %>% count(worldRegion) %>% mu
 allSRAFinal %>% filter(!is.na(strictestRace)) %>% count(worldRegion) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 allSRAFinal %>% count(worldRegion) %>% mutate(freq = n/sum(n)) %>% arrange(desc(freq))
 
+# And finally... are studies from certain regions bigger than others?
+NAEurSizes <- allSRAFinal %>% filter(worldRegion == "North America" | worldRegion == "Europe") %>%
+  count(SRA.Study)
+
+restWorldSizes <- allSRAFinal %>% filter(worldRegion != "North America" & worldRegion != "Europe") %>%
+  count(SRA.Study)
+
+t.test(restWorldSizes$n, NAEurSizes$n)
+
+allStudySizes <- allSRAFinal %>% group_by(SRA.Study) %>% 
+  summarise(sampleSize = n(), region = worldRegion) %>% 
+  distinct()
+
+lm(sampleSize ~ region, data = allStudySizes)
+anova(lm(sampleSize ~ region, data = allStudySizes))
+
+
+# Note that there's an issue here - although we filtered for studies with more than 10 entries, not all of those will have 10 samples with descriptors, which explains why these numbers are smaller. So long as we are consistent across the two datasets, it should be ok. 
+
 ```
 
 Maybe worth considering some alluvial plots? At the single country level they're very messy, however, so what about at the World Bank region level?
