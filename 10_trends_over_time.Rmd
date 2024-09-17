@@ -39,7 +39,7 @@ theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
         legend.title = element_text(size=8), #change legend title font size
         legend.text = element_text(size=6),
         plot.title = element_text(size=8))
-theme_update(plot.margin = unit(c(0, 0, 0, 0), "pt"))
+# theme_update(plot.margin = unit(c(2, 2, 2, 2), "pt"))
 
 options(device = "quartz")
 ```
@@ -178,7 +178,7 @@ panelBInner <- ggplot(tmp3,aes(x=2012:2022, y=1-prop_white)) +
   xlab('Year') + 
   ylim(0,0.8) +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  # stat_poly_eq(use_label(c("R2"))) + 
+  stat_poly_eq(use_label(c("R2"))) +
   scale_x_continuous(breaks=seq(2012,2022, by=2))
 
 panelBInner
@@ -200,6 +200,7 @@ panelBOuter <- ggplot(tmp4, aes(x=as.numeric(Var1)+2011, y=cumulative, color=gro
   labs(x = "Year", y = "Cumulative Samples") +
   scale_color_race() +
   scale_x_continuous(breaks=seq(2012,2022, by=2)) +
+  guides(color=guide_legend(title="", label.position="left")) +
   theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
 
 panelBOuter
@@ -242,7 +243,7 @@ panelCInner <- ggplot(tmp3,aes(x=2012:2022, y=1-prop_euro)) +
   xlab('Year') + 
   ylim(0,0.8) +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  # stat_poly_eq(use_label(c("R2"))) + 
+  stat_poly_eq(use_label(c("R2"))) +
   scale_x_continuous(breaks=seq(2012,2022, by=2))
 
 panelCInner
@@ -268,6 +269,7 @@ panelCOuter <- ggplot(tmp4, aes(x=as.numeric(Var1)+2011, y=cumulative, color=gro
   labs(x = "Year", y = "Cumulative Samples") +
   scale_color_geography() +
   scale_x_continuous(breaks=seq(2012,2022, by=2)) +
+  guides(color=guide_legend(title="", label.position="left")) +
   theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
 
 panelCOuter
@@ -308,7 +310,7 @@ panelDInner <- tmp3 %>% filter(tmp3$Var1 > 2011 & tmp3$Var1 < 2023) %>%
   xlab('Year') + 
   ylim(0,0.8) +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  # stat_poly_eq(use_label(c("R2"))) + 
+  stat_poly_eq(use_label(c("R2"))) +
   scale_x_continuous(breaks=seq(2012,2022, by=2))
 
 panelDInner
@@ -332,13 +334,14 @@ dbGapColours <- brewer.pal(9,"Set3")
 
 tmp5<-subset(tmp4,group!='European')
 
-panelDOuter <- ggplot(tmp5, aes(x=Var1, y=cumulative, color=variable)) +
+panelDOuter <- tmp5 %>% filter(tmp5$Var1 > 2011 & tmp5$Var1 < 2023) %>% 
+  ggplot(., aes(x=Var1, y=cumulative, color=variable)) +
   geom_line(linewidth=1.2)+
   geom_point(size=3)+
   labs(x = "Year", y = "Cumulative Samples") +
-  # theme_bw(13) +
   scale_color_manual(values=dbGapColours)+
-  # guides(fill=guide_legend(title="", label.position="left")) +
+  scale_x_continuous(breaks=seq(2012,2022, by=2)) +
+  guides(color=guide_legend(title="", label.position="left")) +
   theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
 
 panelDOuter
@@ -388,6 +391,8 @@ both2<-as.data.frame(aggregate(both$Freq~both$Var2+both$info,FUN=sum))
 names(both2)<-c('Var1','Var2','Freq')
 both2$Var2_relevel<-factor(both2$Var2,levels = c("SRA", "dbGap", "GWAS"))
 
+both2$Var1 <- gsub("or ", "or\n", both2$Var1)
+
 panelE <- ggplot(both2, aes(fill=Var1, y=Freq, x=Var2_relevel)) + 
   geom_bar(position="fill", stat="identity")+
   # theme_bw(13)+
@@ -397,6 +402,7 @@ panelE <- ggplot(both2, aes(fill=Var1, y=Freq, x=Var2_relevel)) +
   scale_fill_manual(values=c('#9C8DC3', '#04C3C8','#DB6968','#F8984E', '#FBC9C4' ))+
   coord_flip()+ 
   scale_y_continuous(breaks=c(0,0.5,1))+
+  guides(fill=guide_legend(title="", label.position="left", nrow=2)) +
   theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
 
 ```
@@ -405,12 +411,13 @@ And finally... we build the plot... but there's some size issues, so how shall w
 
 ```{r plotting-all-the-things}
 # Assemble the insets
-panelBJoint <- panelBOuter + inset_element(panelBInner, left=0.01, bottom=0.35, top=0.98, right=0.5)
-panelCJoint <- panelCOuter + inset_element(panelCInner, left=0.01, bottom=0.35, top=0.98, right=0.5)
-panelDJoint <- panelDOuter + inset_element(panelDInner, left=0.01, bottom=0.35, top=0.98, right=0.5)
+panelBJoint <- panelBOuter + inset_element(panelBInner, left=0.01, bottom=0.35, top=0.98, right=0.7)
+panelCJoint <- panelCOuter + inset_element(panelCInner, left=0.01, bottom=0.35, top=0.98, right=0.7)
+panelDJoint <- panelDOuter + inset_element(panelDInner, left=0.01, bottom=0.35, top=0.98, right=0.7)
 
 (((panelA | panelE) / panelCJoint) | (panelDJoint / panelBJoint)) +
-plot_annotation(tag_levels = 'A')
+  plot_annotation(tag_levels = 'A') &
+    theme(plot.tag = element_text(size = 10))
 
 ggsave("trends_over_time_all.pdf", width = 7, height = 7)
 ggsave("trends_over_time_all.png", width = 7, height = 7)
