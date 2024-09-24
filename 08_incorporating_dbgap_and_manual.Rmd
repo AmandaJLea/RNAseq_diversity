@@ -46,7 +46,7 @@ dbgap <- dbgap[rowSums(dbgap[,1:9]) > 0,]
 dbgap <- dbgap %>% 
   mutate(cleanAccession = str_split_i(accession, "\\.", 1))
 
-dim(dbgap) # Si 36 studies only... yikes! So there must be some big studies here!
+dim(dbgap) # So 36 studies only... yikes! So there must be some big studies here!
 sum(dbgap[,1:9])
 
 # Disgusting I love it
@@ -102,19 +102,19 @@ litRevGeo <- litRevAncestries[litRevAncestries$InterpretS %in% "geography",]
 litRevSimple$finalRace <- litRevRace[match(litRevSimple$tempRace, litRevRace$ReportedT, incomparables = NA, nomatch = NA),]$InterpretT
 litRevSimple$finalGeo <- litRevGeo[match(litRevSimple$tempGeo, litRevGeo$ReportedT, incomparables = NA, nomatch = NA),]$InterpretT
 
-litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),] # Gotta fix all of the hispanic samples, and decide what to do with the Unknowns - I prefer not to plot those? 
+litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),] # Gotta fix all of the hispanic samples, and decide what to do with the Unknowns - I prefer not to plot those, and as of my email to Grace on 20240916, we're excluding them. 
 
 litRevSimple <- litRevSimple %>%
-  mutate(finalRace = ifelse(InterpretT == "hispanic", "hispanic", finalRace)) %>%
-  mutate(finalRace = ifelse(is.na(finalRace) & grepl("SRP079684|SRP136469|SRP187431", recount3) , "Unknown", finalRace)) %>% 
-  mutate(finalGeo = ifelse(is.na(finalGeo) & grepl("SRP144647", recount3), "Unknown", finalGeo))
+  mutate(finalRace = ifelse(InterpretT == "hispanic", "hispanic", finalRace)) 
 
-litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),] # Gotta fix all of the hispanic samples, to 
+litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),]  
+
 # We gotta standardise this so it can use the same colour schemes as the SRA files, which means a bit of renaming of columns:
 
 litRevSimple <- litRevSimple %>%
   mutate(finalGeo = gsub("^Asia$", "Asia (NOS)", finalGeo)) %>%
   mutate(finalRace = gsub("or ", "or\n", finalRace)) %>%  
+  mutate(finalRace = gsub("and ", "and\n", finalRace)) %>%  
   mutate(finalRace = if_else(grepl("hispanic", finalGeo), "Hispanic", finalRace)) %>%
   mutate(finalRace = gsub("hispanic", "Hispanic", finalRace)) %>%
   mutate(finalRace = gsub("multiple", "Multiple", finalRace)) %>%
@@ -123,30 +123,30 @@ litRevSimple <- litRevSimple %>%
 # And let's sanity check this against the numbers Grace has in other tabs of the file, and in the paper. Total number of inds should be 3407
 
 litRevSimple %>%  
-  summarise(totalInds = sum(individs)) # Correct
+  summarise(totalInds = sum(individs)) # Correct, 3407 in the file she sent me, including the unknowns
 
 # Breakdown by ancestry:
 litRevSimple %>% filter(InterpretS == "geography") %>% 
-  summarise(totalInds = sum(individs)) # Correct
+  summarise(totalInds = sum(individs)) # Correct, expect 2143 when including unknowns
 
 litRevSimple %>% filter(!is.na(finalGeo)) %>% 
-  summarise(totalInds = sum(individs)) # Correct, expect 2143
+  summarise(totalInds = sum(individs)) # Correct, expect 2126 when removing unknowns
 
 # Breakdown by race:
 litRevSimple %>% filter(InterpretS == "race") %>% 
-  summarise(totalInds = sum(individs)) # Correct
+  summarise(totalInds = sum(individs)) # Correct, expect 1264 with unknowns
 
 litRevSimple %>% filter(!is.na(finalRace)) %>% 
-  summarise(totalInds = sum(individs)) # Correct, expect 1264
+  summarise(totalInds = sum(individs)) # Correct, expect 1250 without unknowns
 
 # And now quick tabulating breakdowns:
 litRevSimple %>% filter(!is.na(finalGeo)) %>% 
   group_by(finalGeo) %>% 
-  summarise(totalInds = sum(individs)) # Correct, expect 2143
+  summarise(totalInds = sum(individs)) # Correct, match Grace's excel
   
 litRevSimple %>% filter(!is.na(finalRace)) %>% 
   group_by(finalRace) %>% 
-  summarise(totalInds = sum(individs)) # Correct, expect 2143
+  summarise(totalInds = sum(individs)) # Correct, match Grace's excel
 
 # And now we basically have a melted dataframe already! 
 saveRDS(litRevSimple, file="20240916_manual_final.rds")

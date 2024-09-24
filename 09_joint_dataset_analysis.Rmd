@@ -46,7 +46,7 @@ unique(dbGapFinal$variable) # This is really a horrible mix of both, but I guess
 
 dbGapFinal$variable <- factor(dbGapFinal$variable, levels = c("African", "African American", "European", "South Asian", "East Asian", "Other Asian or\nPacific Islander", "HispanicA", "HispanicB", "Other"))
 
-dbGapColours <- brewer.pal(9,"Set3") #8 because we don't plot NAs... might want to shuffle 
+dbGapColours <- brewer.pal(9,"Set3") 
 
 scale_color_dbGap <- function(...){
     ggplot2:::manual_scale('color', 
@@ -300,7 +300,7 @@ allCountry3 <- allCountry3 %>%
 
 ggplot(allCountry3, aes(x = excess, y=finalCountry, color=db)) +
   geom_point(size = 3) +
-  scale_x_continuous(trans='log10', breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x))) +
+  scale_x_continuous(trans='log10', breaks = trans_breaks("log10", function(x) 10^x), labels = scales::comma) +
   geom_vline(xintercept = 1) +
   annotation_logticks(sides="b") +
   xlab("Overrepresentation in database\nrelative to global population") +
@@ -419,9 +419,9 @@ geoPlot + litRevGeoPlot + dbgapPlot + racePlot + litRevRacePlot +
     plot_layout(design = long6Design, tag_level = 'new') +
     plot_annotation(tag_levels = 'A') 
 
-# Because this figure has been cleaned up already...  
-# ggsave("all_dbs_descriptors.pdf", width = 7, height = 4.5)
-# ggsave("all_dbs_descriptors.png", width = 7, height = 4.5)
+# Because this figure has been cleaned up already...
+ggsave("all_dbs_descriptors.pdf", width = 7, height = 4.5)
+ggsave("all_dbs_descriptors.png", width = 7, height = 4.5)
 
 
 ```
@@ -521,7 +521,7 @@ ggplot(allGeoProps, aes(x = excess, y=strictestGeography, color=db)) +
   # scale_x_continuous(trans='log2', breaks = trans_breaks("log2", function(x) 2^x), labels = trans_format("log2", math_format(2^.x))) +
   scale_x_continuous(trans='log2', breaks = trans_breaks("log2", function(x) 2^x)) +
   geom_vline(xintercept = 1) +
-  annotation_logticks(sides="b") +
+  # annotation_logticks(sides="b") +
   xlab("Fold overrepresentation in database\nrelative to global population") +
   ylab("Geographic/Ancestral descriptor") +
   theme_bw(base_size = 8) +
@@ -620,7 +620,4 @@ geobyStudy + racebyStudy + dbGapbyStudy +
   plot_annotation(tag_levels = 'A') 
 ggsave("fig2_by_study_boxplot_all.pdf", width=6.5, height=8)
 ggsave("fig2_by_study_boxplot_all.png", width=6.5, height=8)
-
-
-
 ```
