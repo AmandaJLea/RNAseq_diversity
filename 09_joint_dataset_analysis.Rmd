@@ -1,0 +1,623 @@
+---
+title: "OMG finally"
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+We will finally analyse this data properly. 
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(patchwork)
+library(ggalluvial)
+library(RColorBrewer)
+library(ggrepel)
+library(viridis)
+library(thematic)
+library(scales)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(countrycode)
+
+options(device = "quartz")
+
+allSRAFinal <- readRDS("20240901_allSRAFinal_for_plotting.rds")
+dbGapFinal <- readRDS("20240731_dbgap_final.rds")
+litRevFinal <- readRDS("20240916_manual_final.rds")
+
+```
+
+# We need to clean up a bit for the new files:
+
+I looked at the GWAS Catalog's description of their ancestry curation, and I still don't know what to do with the samples that Amanda has, because I would argue that this is genetic ancestry, poorly described, which is not necessarily the case for the other two datasets. But it also has a bunch of terms that are clearly racial in origin and inspiration, so, like... dunno what to do here.  
+
+```{r dbgap-prep-1}
+unique(dbGapFinal$variable) # This is really a horrible mix of both, but I guess primarily of geography terms, so I'm making it a new colour scheme... Set 3 here we go
+
+dbGapFinal$variable <- factor(dbGapFinal$variable, levels = c("African", "African American", "European", "South Asian", "East Asian", "Other Asian or\nPacific Islander", "HispanicA", "HispanicB", "Other"))
+
+dbGapColours <- brewer.pal(9,"Set3") 
+
+scale_color_dbGap <- function(...){
+    ggplot2:::manual_scale('color', 
+        values = setNames(dbGapColours, levels(dbGapFinal$variable)), 
+    )
+}
+
+scale_fill_dbGap <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(dbGapColours, levels(dbGapFinal$variable)), 
+    )
+}
+
+```
+
+```{r plotting-prep-1}
+# SRA and manual colours:
+
+# First let's fix Sub-Saharan and set the unknowns to NA so we don't break the plots.
+litRevFinal <- litRevFinal %>% 
+  mutate(finalGeo = gsub("Subsaharan Africa", "Sub-Saharan Africa", finalGeo)) %>%
+  mutate(finalGeo = gsub("Unknown", NA, finalGeo)) %>%
+  mutate(finalRace = gsub("Unknown", NA, finalRace))
+
+litRevFinal$finalGeo <- factor(litRevFinal$finalGeo, levels = c("Sub-Saharan Africa", "Europe", "South Asia","East Asia", "Asia (NOS)"))
+
+scale_fill_geography <- function(...){
+    ggplot2:::manual_scale('fill',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
+    )
+}
+
+scale_color_geography <- function(...){
+    ggplot2:::manual_scale('color',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
+    )
+}
+
+raceColours <- brewer.pal(8,"Set2") #8 because we don't plot NAs
+
+scale_color_race <- function(...){
+    ggplot2:::manual_scale('color', 
+                           values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
+    )
+}
+
+scale_fill_race <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
+    )
+}
+
+
+# And finally, the world Bank Economic region palette, for later:
+wberCols <- c(viridis::turbo(n = 7))
+scale_fill_wber <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(wberCols, c("East Asia &\nPacific", "Europe &\nCentral Asia", "Latin America &\nCaribbean", "Middle East &\nNorth Africa", "North America", "South Asia", "Sub-Saharan Africa")), na.value = "grey50")
+}
+
+# We also define a couple of plot layouts:
+long6Design <- "
+  123
+  456
+"
+
+wide6Design <- "
+  12
+  34
+  56
+"
+
+fourDesign <- "
+  12
+  34
+"
+
+fiveDesign <- "
+  123
+  45#
+"
+
+fiveLongDesign <- "
+  14
+  25
+  3#
+"
+
+wide3Design <- "
+  1
+  2
+  3
+"
+
+theme_set(theme_bw(base_size = 6))
+theme_update(axis.text=element_text(size=7))
+theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
+        legend.title = element_text(size=8), #change legend title font size
+        legend.text = element_text(size=6),
+        plot.title = element_text(size=8))
+theme_update(plot.margin = unit(c(2, 2, 2, 2), "pt"))
+```
+
+
+We're also going to use some additional info from the World Bank, so let's add those columns in now, to all datasets (they're already in SRA, so only need to add them to dbgap, which is easy—all USA—and to the recount manual files):
+
+Worth keeping in mind that China here includes Hong Kong SAR, which is world bank high income while the rest of China is upper middle.
+
+```{r plotting-prep-2}
+worldBank <- read.csv("World_Bank_Descriptors.csv")
+
+dbGapFinal$worldBank <- "High income"
+dbGapFinal$worldRegion <- "North America"
+
+# Lit review has the unique benefit of being the only place where we have submitting country and sampling country, so we will consider both
+
+litRevFinal <- litRevFinal %>%
+  mutate(samcountry = gsub("England", "United Kingdom", samcountry)) %>%
+  mutate(samcountry = gsub("Hong Kong", "China", samcountry)) %>%
+  mutate(lacountry = gsub("Hong Kong", "China", lacountry)) %>%
+  mutate(samcountry = gsub("United States; United States", "United States", samcountry)) %>%
+  mutate(samcountry = gsub("Pennsylvania", "United States", samcountry)) %>%
+  mutate(samcountry = gsub("^Unknown$", "Unreported/Unknown", samcountry)) %>%
+  mutate(samcountry = gsub("^Unreported$", "Unreported/Unknown", samcountry)) %>%
+  mutate(samcountry = gsub("^unreported$", "Unreported/Unknown", samcountry))
+
+litRevFinal$worldBankSample <- worldBank[match(litRevFinal$samcountry, worldBank$Economy),]$Income.group
+litRevFinal$worldBankLA <- worldBank[match(litRevFinal$lacountry, worldBank$Economy),]$Income.group
+
+litRevFinal$worldRegionSample <- worldBank[match(litRevFinal$samcountry, worldBank$Economy),]$Region
+litRevFinal$worldRegionLA <- worldBank[match(litRevFinal$lacountry, worldBank$Economy),]$Region
+
+litRevFinal %>% count(samcountry, worldBankSample)
+litRevFinal %>% count(lacountry, worldBankLA)
+
+litRevFinal %>% count(samcountry, worldRegionSample)
+litRevFinal %>% count(lacountry, worldRegionLA)
+
+# As before, missing countries are all high income, so we can set them to that manually now that we're happy with the names:
+litRevFinal <- litRevFinal %>% 
+  mutate(worldBankLA = if_else(grepl("South Korea|Taiwan", lacountry), "High income", worldBankLA)) %>%
+  mutate(worldRegionLA = if_else(grepl("South Korea|Taiwan", lacountry), "East Asia & Pacific", worldRegionLA)) %>%
+  as.data.frame()
+
+# And now we need to clean up some labels so we can plot them better. Good thing is, it's just an ampersand:
+litRevFinal$worldRegionLA <- gsub("& ", "&\n", litRevFinal$worldRegionLA)
+litRevFinal$worldRegionSample <- gsub("& ", "&\n", litRevFinal$worldRegionSample)
+```
+
+## 1. Where is the sequencing happening, and what countries are being included?  
+
+The best plots here are probably a stacked bar chart for the three datasets, and then an alluvial for the manual review showing sampling country and last author country
+
+```{r plot-clean-country, out.width="100%", echo=F}
+litRevFinal <- litRevFinal %>% 
+  mutate(hasDescriptor = if_else(grepl("ancestry", ReportedS), "Geographic", "Racial"))
+
+sraCountry <- allSRAFinal %>% drop_na(finalCountry) %>% count(finalCountry, worldRegion, worldBank, hasDescriptor) %>% melt() %>% arrange(worldRegion) %>% mutate(db = "SRA")
+dbGapCountry <- dbGapFinal %>% drop_na(finalCountry) %>% group_by(finalCountry, worldRegion, worldBank) %>% summarise(value = sum(value)) %>% mutate(db = "dbGaP") %>% as.data.frame()
+litRevCountry <- litRevFinal %>% drop_na(lacountry) %>% group_by(lacountry, worldRegionLA, worldBankLA, samcountry, worldRegionSample, worldBankSample, hasDescriptor) %>% summarise(value = sum(individs)) %>% mutate(db = "Manual") %>% as.data.frame()
+
+# Fix a couple of names for litRev so we can do some nice stacked bar plots...
+names(litRevCountry)[1:3] <- c("finalCountry", "worldRegion", "worldBank")
+
+# But this is all very annoying because it makes the plots by country and we get a lot of weird artefacts in our plots. So let's do a bit more merging of data before we plot
+
+allCountry <- rbind.fill(sraCountry, dbGapCountry, litRevCountry)
+allCountry <- allCountry %>%
+  mutate(worldBank = gsub("middle ", "middle\n", worldBank)) %>% 
+  mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) %>%
+  mutate(hasDescriptor = if_else(grepl("dbGaP", db), "GrafPop", hasDescriptor)) %>%
+  mutate(finalCountry = if_else(grepl("USA", finalCountry), "United States", finalCountry))
+
+dbByRegion <- allCountry %>% group_by(worldRegion, db) %>% summarise(value = sum(value), db = db) %>% distinct() %>% as.data.frame %>% 
+  ggplot(., aes(x = db, y=value, fill=worldRegion)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Sample depositor location\n(WB Economic Region)") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  scale_fill_wber() +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
+
+dbByEconomy <- allCountry %>% group_by(worldBank, db) %>% summarise(value = sum(value), db = db) %>% distinct() %>% as.data.frame %>% 
+  ggplot(., aes(x = db, y=value, fill=worldBank)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Sample depositor location\n(WB Income Group)") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  scale_fill_viridis_d(option = "viridis") +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
+
+manualAlluvialCountry <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(finalCountry) %>%
+  ggplot(data = ., aes(axis1 = worldRegion, axis2 = worldRegionSample, y = value)) +
+    scale_x_discrete(limits = c("Last author\nWBER", "Sampling country\nWBER"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = worldRegionSample)) +
+    scale_fill_wber() +
+    geom_stratum(width=1/4) +
+    ylab("Samples") +
+    # geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), direction = "y", size=0.02) +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+    theme_minimal(base_size = 8) +
+    theme(legend.position = "none")
+  
+manualAlluvialEconomy <- allCountry %>% filter(grepl("Manual", db)) %>% drop_na(worldBank) %>% 
+  ggplot(data = ., aes(axis1 = worldBank, axis2 = worldBankSample, y = value)) +
+    scale_x_discrete(limits = c("Last author\nWBIG", "Sampling country\nWBIG"), expand = c(.2, .05)) +
+    geom_alluvium(aes(fill = worldRegionSample)) +
+    scale_fill_wber() +
+    geom_stratum(width=1/3) +
+    ylab("Samples") +
+    # geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+    theme_minimal(base_size = 8) +
+    theme(legend.position = "none")
+
+# Add a blank space so we can also add the map later:
+dbByRegion + dbByEconomy + plot_spacer() + manualAlluvialCountry +
+  plot_layout(design = fourDesign) +
+  plot_annotation(tag_levels = 'A')
+ggsave("all_dbs_sample_properties_map_pre.pdf", width = 6, height = 6)
+ggsave("all_dbs_sample_properties_map_pre.png", width = 6, height = 6)
+
+```
+
+How overrepresented are these numbers? We begin by grabbing the UN population data:
+
+```{r overrepresentation}
+worldPop <- read.csv("RNA-seq-diversity_world-population.csv")
+worldPop$name <- gsub("Korea, South", "South Korea", worldPop$name)
+
+allCountry2 <- allCountry %>% 
+  group_by(finalCountry, db, worldRegion) %>% 
+  summarise(value = sum(value)) %>%
+  as.data.frame()
+
+allCountry3 <- left_join(allCountry2, worldPop, join_by( "finalCountry" == "name"))
+
+# And now we get some fancy new columns for plotting
+allCountry3 <- allCountry3 %>% 
+  mutate(fractPop = value.y/sum(worldPop$value)) %>%
+  group_by(db) %>%
+  mutate(fractDB = value.x/sum(value.x)) %>%
+  mutate(excess = fractDB/fractPop) %>%
+  as.data.frame()
+
+ggplot(allCountry3, aes(x = excess, y=finalCountry, color=db)) +
+  geom_point(size = 3) +
+  scale_x_continuous(trans='log10', breaks = trans_breaks("log10", function(x) 10^x), labels = scales::comma) +
+  geom_vline(xintercept = 1) +
+  annotation_logticks(sides="b") +
+  xlab("Overrepresentation in database\nrelative to global population") +
+  ylab("Depositing/Last author country") +
+  theme_bw(base_size = 8) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.position="bottom")
+
+ggsave("db_overrepresentation.pdf", width = 3, height = 8)
+ggsave("db_overrepresentation.png", width = 3, height = 8)
+
+```
+
+And now we're making a map with all of this...
+
+```{r sra-map}
+toplot<-aggregate(BioSample~finalCountry,data=allSRAFinal,FUN=length)
+colnames(toplot) <- c('name','samples')
+toplot$name[which(toplot$name=='USA')]<-'United States of America'
+toplot$name[which(toplot$name=='UK')]<-'United Kingdom'
+toplot$name[which(toplot$name=='Hong Kong SAR')]<-'Hong Kong'
+toplot$name[which(toplot$name=='Korea')]<-'South Korea' #???
+
+toplot2 <- ne_countries(scale='medium', returnclass = 'sf') %>%
+  left_join(toplot, by = 'name')
+toplot2$samples[which(is.na(toplot2$samples))]<-0
+
+# check for any that failed to merge
+toplot$name[-which(toplot$name %in% toplot2$name)]
+
+tmp<-subset(toplot2,samples>0)
+table(tmp$income_grp)
+
+ggplot(data=toplot2) +
+  geom_sf(aes(fill=log10(samples)), color='grey', size=0.1) +
+  coord_sf(crs = "+proj=eqearth +wktext") +
+  scale_fill_viridis(option="rocket", na.value = "grey50") +
+  theme(panel.grid.major = element_line(linewidth = 0.25, linetype = 'solid', color = "grey"),
+        panel.border = element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()
+  ) 
+
+ggsave("all_dbs_sample_properties_only_map.pdf", width = 4, height = 4)
+
+```
+
+## 2. Sample breakdown by descriptor
+
+Making main text figure 2 - ancestry breakdown for all comparisons
+
+```{r plot-survey-level, out.width="100%"}
+geographyProp <- allSRAFinal %>% drop_na(strictestGeography) %>% count(strictestGeography) %>% mutate(freq = n/sum(n))
+raceProp <- allSRAFinal %>% drop_na(strictestRace) %>% count(strictestRace) %>% mutate(freq = n/sum(n))
+
+dbgapProp <- dbGapFinal %>% group_by(variable) %>% summarise(n = sum(value)) %>% mutate(freq = n/sum(n))
+
+litRevGeoProp <- litRevFinal %>% drop_na(finalGeo) %>% group_by(finalGeo) %>% summarise(n = sum(individs)) %>% mutate(freq = n/sum(n))
+litRevRaceProp <- litRevFinal %>% drop_na(finalRace) %>% group_by(finalRace) %>% summarise(n = sum(individs)) %>% mutate(freq = n/sum(n))
+
+geoPlot <- ggplot(geographyProp, aes(x = fct_inorder(strictestGeography), y = n, fill = strictestGeography)) +
+  geom_bar(stat="identity") +
+  ggtitle("Submitted SRA descriptor\n(ancestral/geographic origin)") +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_flip() +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1)) 
+
+racePlot <- ggplot(raceProp, aes(x = fct_rev(fct_inorder(strictestRace)), y = n, fill=strictestRace)) +
+  geom_bar(stat="identity") +
+  ggtitle("Submitted SRA descriptor\n(US Census term)") +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_flip() +
+  scale_fill_race() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1)) 
+
+litRevGeoPlot <- ggplot(litRevGeoProp, aes(x = fct_inorder(finalGeo), y = n, fill = finalGeo)) +
+  geom_bar(stat="identity") +
+  ggtitle("Recorded manual descriptor\n(ancestral/geographic origin)") +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_flip() +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1)) 
+
+litRevRacePlot <- ggplot(litRevRaceProp, aes(x = fct_rev(fct_inorder(finalRace)), y = n, fill=finalRace)) +
+  geom_bar(stat="identity") +
+  ggtitle("Recorded manual descriptor\n(US Census term)") +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_flip() +
+  scale_fill_race() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1)) 
+
+dbgapPlot <- ggplot(dbgapProp, aes(x = fct_rev(fct_inorder(variable)), y = n, fill=variable)) +
+  geom_bar(stat="identity") +
+  ggtitle("Reported dbGaP descriptor\n(GrafPop software)") +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_flip() +
+  scale_fill_dbGap() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1)) 
+
+geoPlot + litRevGeoPlot + dbgapPlot + racePlot + litRevRacePlot +
+    plot_layout(design = long6Design, tag_level = 'new') +
+    plot_annotation(tag_levels = 'A') 
+
+# Because this figure has been cleaned up already...
+ggsave("all_dbs_descriptors.pdf", width = 7, height = 4.5)
+ggsave("all_dbs_descriptors.png", width = 7, height = 4.5)
+
+
+```
+
+Finally, working out the overrepresentation of countries in the three datasets, so I can make that second supplementary plot. We grab the population regions from the toplot2 object Amanda had as a good starting point:
+
+```{r fig2-overrepresentation-global}
+worldPop <- left_join(worldPop, toplot2[,c(19,93:96)], by = "name") 
+worldPop <- worldPop[,-8]
+
+worldPopNA <- worldPop[is.na(worldPop$subregion),]
+worldPopOk <- worldPop %>% filter(!is.na(subregion))
+
+worldPopNA <- worldPopNA %>%
+  mutate(subregion = ifelse(grepl("America", region), "Americas", subregion)) %>%
+  mutate(subregion = ifelse(grepl("Australia and Oceania", region), "Oceania", subregion)) %>%
+  mutate(subregion = ifelse(grepl("Europe", region), "Europe", subregion)) %>% 
+  mutate(subregion = ifelse(grepl("Middle East", region), "North AF and WA", subregion)) %>%
+  mutate(subregion = ifelse(grepl("Africa", region), "Sub-Saharan Africa", subregion)) %>%
+  mutate(subregion = ifelse(grepl("Korea, North|Macau|Paracel", name), "East Asia", subregion)) %>%
+  mutate(subregion = ifelse(grepl("Burma", name), "Southeast Asia", subregion)) 
+
+worldPop2 <- rbind(worldPopNA, worldPopOk)
+```
+
+... and we stop there until we work out what to do with all the Europeans outside Europe! 
+
+Lol the internet suggested just adding the number of Europeans outside Europe, and the best source I could find was the Wikipedia page on the European diaspora (at least I saved it to Zotero. Technically should be able to read in those numbers and, uh, substract them from the countries, and recompute stuff? But that is such BS...)
+
+I removed overseas holdings of European countries to avoid double counting (Ceuta, Melilla, New Caledonia, etc), and also countries that the world bank says are European (Russia, one of the stans)
+
+```{r fig2-overrepresentation-global-2}
+euros <- read.csv("20240901_European_diaspora_data.csv")
+africans <- read.csv("20240901_African_diaspora_data.csv")
+
+# Let's drop the mixed ones? I don't know what to do with them... If I don't I end up double-counting a LOT of Brazilians
+euros <- euros %>% filter(!grepl("mixed", Note))
+africans <- africans %>% filter(!grepl("mixed", Note)) %>%
+  mutate(Country = ifelse(grepl("Turkey", Country), "Turkey (Turkiye)", Country))
+
+worldPop3 <- left_join(worldPop2, euros, join_by("name" == "Country") )
+worldPop3 <- left_join(worldPop3, africans, join_by("name" == "Country") )
+
+worldPop3 <- worldPop3 %>%
+  mutate(European = ifelse(is.na(European), 0, European)) %>%
+  mutate(African = ifelse(is.na(African), 0, African)) %>%
+  mutate(nonEuroPop = value - European) %>% 
+  mutate(nonAFR = value - African) %>%
+  mutate(noneither = value - European - African)
+
+head(worldPop3)
+
+regionalPop <- worldPop3 %>% group_by(subregion) %>%
+  summarise(population = sum(value), euro = sum(European), noneuro = sum(nonEuroPop), afr = sum(African), nonafr = sum(nonAFR), others = sum(noneither)) %>% as.data.frame()
+
+# This also needs a bit more cleaning:
+regionalPop <- regionalPop %>%
+  mutate(subregion = gsub("Northern Africa|Western Asia", "North AF and WA", subregion)) %>%
+  mutate(subregion = ifelse(grepl("Africa", subregion), "Sub-Saharan Africa", subregion)) %>%
+  mutate(subregion = ifelse(grepl("Europe", subregion), "Europe", subregion)) %>%
+  mutate(subregion = ifelse(grepl("America", subregion), "Americas", subregion)) %>%
+  mutate(subregion = gsub("Australia and New Zealand|Melanesia|Micronesia|Polynesia", "Oceania", subregion)) %>%
+  mutate(subregion = gsub("Caribbean", "Americas", subregion)) %>%
+  mutate(subregion = gsub("South-Eastern Asia", "Southeast Asia", subregion)) %>%
+  mutate(subregion = gsub("Eastern Asia", "East Asia", subregion)) %>%
+  mutate(subregion = gsub("Southern Asia", "South Asia", subregion)) %>%
+  mutate(subregion = gsub("North AF and WA", "North Africa and\nWestern Asia", subregion)) %>%
+  group_by(subregion) %>% summarise(population = sum(population), euro = sum(euro), noneuro = sum(noneuro), afr = sum(afr), nonafr = sum(nonafr), others = sum(others))
+  
+regionalPop
+
+# And now we're finally ready to compare things!
+regionalPop2 <- regionalPop %>%
+  mutate(euro = ifelse(grepl("Europe", subregion), population - afr, euro)) %>%
+  mutate(afr = ifelse(grepl("Sub-Saharan Africa", subregion), population - euro, afr)) %>%
+  mutate(global = ifelse(grepl("Sub-Saharan Africa", subregion), sum(afr), others)) %>%
+  mutate(global = ifelse(grepl("Europe", subregion), sum(euro), global)) %>%
+  mutate(fractPop = global/sum(global)) %>%
+  mutate(sanityCheck = euro + afr + global - population)
+
+regionalPop2 # that gets me to 15.6% for Europe... so we'll go with that even though it's terrible  
+  
+geographyProp <- left_join(geographyProp, regionalPop2, join_by( "strictestGeography" == "subregion"))
+litRevGeoProp <- left_join(litRevGeoProp, regionalPop2, join_by( "finalGeo" == "subregion"))
+
+geographyProp$db <- "SRA"
+litRevGeoProp$db <- "Manual"
+names(litRevGeoProp)[1] <- "strictestGeography"
+ 
+allGeoProps <- rbind(geographyProp, litRevGeoProp)
+allGeoProps <- allGeoProps %>%
+  filter(!is.na(population)) %>%
+  mutate(excess = freq/fractPop)
+
+ggplot(allGeoProps, aes(x = excess, y=strictestGeography, color=db)) +
+  geom_point(size = 3) +
+  # scale_x_continuous(trans='log2', breaks = trans_breaks("log2", function(x) 2^x), labels = trans_format("log2", math_format(2^.x))) +
+  scale_x_continuous(trans='log2', breaks = trans_breaks("log2", function(x) 2^x)) +
+  geom_vline(xintercept = 1) +
+  # annotation_logticks(sides="b") +
+  xlab("Fold overrepresentation in database\nrelative to global population") +
+  ylab("Geographic/Ancestral descriptor") +
+  theme_bw(base_size = 8) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.position="bottom")
+
+ggsave("global_overrepresentation.pdf", width = 3, height = 5)
+ggsave("global_overrepresentation.png", width = 3, height = 5)
+```
+
+Let's move onto the US census, which is a lot easier
+
+```{r fig2-overrepresentation-usa}
+uscensus <- read.csv("RNA-seq diversity - SI tables v2 - US census.csv") 
+
+# To make the merges work:
+uscensus <- uscensus %>%
+  mutate(Race = gsub(" alone", "", Race)) %>% 
+  mutate(Race = ifelse(is.na(Race), "Hispanic", Race)) %>%
+  mutate(Race = gsub("and ", "and\n", Race)) %>% 
+  mutate(Race = gsub("or ", "or\n", Race)) %>%
+  mutate(Race = gsub("\nOther", "\nother", Race)) %>%
+  mutate(Race = gsub("More than 1 race", "Multiple", Race)) %>%
+  mutate(Race = gsub("Some Other Race", "Other", Race))
+
+raceProp <- left_join(raceProp, uscensus, join_by("strictestRace" == "Race"))
+litRevRaceProp <- left_join(litRevRaceProp, uscensus, join_by("finalRace" == "Race"))
+
+raceProp$db <- "SRA"
+litRevRaceProp$db <- "Manual"
+names(litRevRaceProp)[1] <- "strictestRace"
+ 
+allRaceProps <- rbind(raceProp, litRevRaceProp)
+allRaceProps$excess <- allRaceProps$freq/allRaceProps$Proportion.of.the.population
+
+ggplot(allRaceProps, aes(x = excess, y=strictestRace, color=db)) +
+  geom_point(size = 3) +
+  # scale_x_continuous(trans='log2', breaks = trans_breaks("log2", function(x) 2^x), labels = trans_format("log2", math_format(2^.x))) +
+  scale_x_continuous(trans='log2', breaks = trans_breaks("log2", function(x) 2^x)) +
+  geom_vline(xintercept = 1) +
+  # annotation_logticks(sides="b") +
+  xlab("Fold overrepresentation in database\nrelative to US population") +
+  ylab("US Census Term") +
+  theme_bw(base_size = 8) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.position="bottom")
+
+ggsave("us_census_overrepresentation.pdf", width = 3, height = 5)
+ggsave("us_census_overrepresentation.png", width = 3, height = 5)
+```
+
+Much easier...
+
+And now, remaking the plot of samples by study across SRA and dbGaP
+
+```{r samples-by-study}
+sampleGeography <- allSRAFinal %>% count(SRA.Study, strictestGeography) %>% drop_na(strictestGeography)
+sampleRace <- allSRAFinal %>% count(SRA.Study, strictestRace) %>% drop_na(strictestRace)
+meltSampleGeography <- melt(sampleGeography)
+meltSampleRace <- melt(sampleRace)
+
+geobyStudy <- ggplot(meltSampleGeography, aes(x = strictestGeography, y=value,fill=strictestGeography)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Submitted SRA descriptor\n(ancestral/geographic origin)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+racebyStudy <- ggplot(meltSampleRace, aes(x = strictestRace, y=value,fill=strictestRace)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Submitted SRA descriptor\n(US Census term)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_race() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+dbGapbyStudy <- dbGapFinal %>% filter(value > 0) %>%
+  ggplot(., aes(x = variable, y=value,fill=variable)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Reported dbGaP descriptor\n(GrafPop term)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_dbGap() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+geobyStudy + racebyStudy + dbGapbyStudy +
+  plot_layout(design = wide3Design) +
+  plot_annotation(tag_levels = 'A') 
+ggsave("fig2_by_study_boxplot_all.pdf", width=6.5, height=8)
+ggsave("fig2_by_study_boxplot_all.png", width=6.5, height=8)
+```

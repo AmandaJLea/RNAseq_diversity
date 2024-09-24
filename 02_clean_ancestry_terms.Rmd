@@ -1,0 +1,497 @@
+---
+title: "Population descriptor clean up and assignments"
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+This file produces the final version of the SRA table, all ready for analysing. It follows closely from my analyses of the 15th of May, but I just wanted one final document after the last set of emails to Grace, Audrey and Lani, to make sure we were all on the same page; see notebook entry from 2024-06-13 for more details - I've trimmed out some of the commentary here.
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(viridis)
+```
+
+First we load the SRA table and clean it up a bit, removing duplicated BioSamples and all files without any sort of population descriptor associated with it:
+
+```{r big dataset, eval=T}
+old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
+new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
+
+names(new)[8] <- "Cell_line"
+
+allSRA <- rbind.fill(old, new)
+dim(allSRA)
+allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+# allSRA <- unique(allSRA) # This is from Amanda, I do distinct below instead.
+dim(allSRA) # Yep that cleaned things up
+
+allSRAcounts <- as.data.frame(table(allSRA$SRA.Study))
+keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
+allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$Var1,]
+dim(allSRAFilt) # Most of them stick around...
+
+# Some statistics before filtering for 10 samples or more
+length(unique(allSRA$SRA.Study))
+sum(table(allSRA$SRA.Study))
+length(unique(allSRA$BioSample))
+
+# And after filtering for 10 samples or more
+length(unique(allSRAFilt$SRA.Study))
+sum(table(allSRAFilt$SRA.Study))
+length(unique(allSRAFilt$BioSample))
+
+allSRAFilt <- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
+
+# And now after cleaning for pop descriptors:
+length(unique(allSRAFilt$SRA.Study))
+sum(table(allSRAFilt$SRA.Study))
+length(unique(allSRAFilt$BioSample))
+```
+
+#### Are there any repeated BioSamples in here?
+
+```{r biosample dups}
+length(unique(allSRAFilt$BioSample))
+dim(allSRAFilt)
+
+allBS <- table(allSRAFilt$BioSample)
+head(sort(allBS, decreasing=T))
+```
+
+This is as expected (yes there are repeats), so long as there's no confusion over ID terms, which there was for a single study of Ugandans when I flipped the order for filtering, so... where are they coming from?
+
+```{r confirm-biosamples}
+# I'm only checking the four big terms, and they seem fine:
+multPopBS <- allSRAFilt %>% count(BioSample, Population)
+multPopTabled <- table(multPopBS$BioSample)
+head(sort(multPopTabled, decreasing=T))
+
+multRaceBS <- allSRAFilt %>% count(BioSample, RACE)
+multRaceTabled <- table(multRaceBS$BioSample)
+head(sort(multRaceTabled, decreasing=T))
+
+multEthnicityBS <- allSRAFilt %>% count(BioSample, ETHNICITY)
+multEthnicityTabled <- table(multEthnicityBS$BioSample)
+head(sort(multEthnicityTabled, decreasing=T))
+
+multancestryBS <- allSRAFilt %>% count(BioSample, ancestry)
+multancestryTabled <- table(multancestryBS$BioSample)
+head(sort(multancestryTabled, decreasing=T))
+
+# So now we finally clean up to one row per biosample...
+allSRAClean <- allSRAFilt %>% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAClean)
+```
+
+### Cleaning up descriptors:
+
+After a lot of discussion, it's worth having one more look at how the population descriptors were cleaned up and converted, so we write them all out into a huge table and then agree/disagree into what they get classified under.
+
+```{r pop-descriptors-clean, include=F}
+write.table(as.data.frame(table(allSRAClean$ETHNICITY)), file="ETHNICITY_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAClean$RACE)), file="RACE_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAClean$Population)), file="Population_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAClean$reported_race)), file="reported_race_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAClean$ancestry)), file="ancestry_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAClean$race.ethnicity)), file="race.ethnicity_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAClean$primary_race)), file="primary_race_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAClean$DONOR_ETHNICITY)), file="DONOR_ETHNICITY_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+
+```
+### Tabulating the descriptors solo and together:
+
+I've saved everything into excel and that's how we do the really cleaning, but it's worth looking at them here too:
+
+```{r eval-pop-descriptors, eval=T}
+table(allSRAClean$RACE)
+table(allSRAClean$Population)
+table(allSRAClean$reported_race)
+table(allSRAClean$ancestry)
+table(allSRAClean$race.ethnicity)
+table(allSRAClean$primary_race)
+table(allSRAClean$DONOR_ETHNICITY)
+table(allSRAClean$ETHNICITY) 
+```
+Ethnicity was the category we were most worried about, but the numbers of white people in it is actually pretty small save for White British, so I think actually it's not too bad. The bulk of other white terms are in the race category, so still getting classified as white; otherwise it's clearly a mixture of ancestral descriptors and racial ones.
+
+Now we ask, are there overlaps between these categories? FALSE/FALSE is what we want to be looking at:
+
+```{r eval-pop-descriptors-pairwise}
+table(is.na(allSRAClean$RACE), is.na(allSRAClean$primary_race))
+table(is.na(allSRAClean$RACE), is.na(allSRAClean$race.ethnicity))
+table(is.na(allSRAClean$RACE), is.na(allSRAClean$reported_race))
+table(is.na(allSRAClean$RACE), is.na(allSRAClean$ETHNICITY)) # 6862
+table(is.na(allSRAClean$RACE), is.na(allSRAClean$DONOR_ETHNICITY))
+table(is.na(allSRAClean$RACE), is.na(allSRAClean$ancestry))
+table(is.na(allSRAClean$RACE), is.na(allSRAClean$Population)) # 2402
+
+table(is.na(allSRAClean$ETHNICITY), is.na(allSRAClean$primary_race)) # 112
+table(is.na(allSRAClean$ETHNICITY), is.na(allSRAClean$race.ethnicity))
+table(is.na(allSRAClean$ETHNICITY), is.na(allSRAClean$reported_race))
+table(is.na(allSRAClean$ETHNICITY), is.na(allSRAClean$DONOR_ETHNICITY))
+table(is.na(allSRAClean$ETHNICITY), is.na(allSRAClean$ancestry))
+table(is.na(allSRAClean$ETHNICITY), is.na(allSRAClean$Population)) # 2379
+
+table(is.na(allSRAClean$ancestry), is.na(allSRAClean$primary_race))
+table(is.na(allSRAClean$ancestry), is.na(allSRAClean$race.ethnicity))
+table(is.na(allSRAClean$ancestry), is.na(allSRAClean$reported_race))
+table(is.na(allSRAClean$ancestry), is.na(allSRAClean$DONOR_ETHNICITY))
+table(is.na(allSRAClean$ancestry), is.na(allSRAClean$Population))
+```
+Sometimes there's overlap indeed, so what combos are common? 
+
+#### Race + ethnicity info:
+
+```{r raceethnicity}
+raceEthnicity <- allSRAClean[!is.na(allSRAClean$RACE) & !is.na(allSRAClean$ETHNICITY),]
+raceEthnicityTable <- as.data.frame(table(raceEthnicity$RACE, raceEthnicity$ETHNICITY))
+raceEthnicityTable[raceEthnicityTable$Freq > 0,]  
+```
+
+Seems like a lot of the overlaps are people who are using this correctly in the US style - a racial term and then hispanic or not. Then there's the ones that are confused, eg, 304 samples labelled as EUR in both columns, or 'White German' etc
+
+#### Other descriptor pairs:
+
+```{r other-descriptor-pairs}
+racePopulation <- allSRAClean[!is.na(allSRAClean$RACE) & !is.na(allSRAClean$Population),]
+racePopulationTable <- as.data.frame(table(racePopulation$RACE, racePopulation$Population))
+racePopulationTable[racePopulationTable$Freq > 0,]  
+
+ethnicityPopulation <- allSRAClean[!is.na(allSRAClean$ETHNICITY) & !is.na(allSRAClean$Population),]
+ethnicityPopulationTable <- as.data.frame(table(ethnicityPopulation$ETHNICITY, ethnicityPopulation$Population))
+ethnicityPopulationTable[ethnicityPopulationTable$Freq > 0,]  
+```
+Race population is unhelpful, and the bulk of it from the GB study, where GB is a cell type, not a population descriptor; those samples all have hispanic/not hispanic designations too. Also the ethnicity/population combo. 
+
+### Updating the descriptors:
+
+On the basis of all of that and a lot of discussions, we boil things down to the following descriptors, which we're gonna spend some time getting to:
+
+1. finalRace - correspond to US racial terms. Cleaned up below but built initially from columns `RACE`, `race.ethnicity`, `DONOR_ETHNICITY`, `primary_race` and `reported_race`. The major column here is `RACE`.
+2. finalGeography - tries to capture geographic origin/ancestry (not genetic). Also cleaned up below, but built initially from info in columns `ETHNICITY`, `ancestry` and `Population`. The major column here is `ETHNICITY` but there'll be some reassignment of terms to other columns as we go.
+3. hispanic - true/false column for those who reported hispanic/not hispanic, regardless of what column
+
+We begin by merging the multiple columns into `mergedRace` and `mergedGeography`, this will be the basis of all cleaning downstream:
+
+```{r merge-terms-1}
+# This column is filled in order: RACE, if empty, race.ethnicity, if empty reported_race, etc etc... There's no overlap between these, from above, so we know it's all good. 
+allSRAClean$mergedRace <- coalesce(allSRAClean$RACE, allSRAClean$race.ethnicity) %>%
+  coalesce(., allSRAClean$reported_race) %>%
+  coalesce(., allSRAClean$DONOR_ETHNICITY) %>%
+  coalesce(., allSRAClean$primary_race) 
+
+# In order of importance: ancestry, if empty, Population, if empty ETHNICITY
+allSRAClean$mergedGeography <- coalesce(allSRAClean$ancestry, allSRAClean$Population) %>%
+  coalesce(., allSRAClean$ETHNICITY) 
+```
+
+Some quick QC on the new columns... FALSE is the number of rows with some sort of annotation in these new columns, although some of them are mistakes at this point, the bulk of FALSE/FALSE is gonna be hispanic/latino info and/or that cursed GB dataset
+
+```{r merge-terms-2}
+table(is.na(allSRAClean$mergedGeography))
+table(is.na(allSRAClean$mergedRace))
+
+# And how much redundancy? 
+table(is.na(allSRAClean$mergedGeography), is.na(allSRAClean$mergedRace)) #
+
+# Making my life easier... 
+columnsILike <- c(1,2,3,10,15,18,23,25,29,31,32,46:47)
+
+# Let's look at these more closely (pipe this to tail and head and adjust the numbers to have a nice look at random bits and pieces)
+tail(head(allSRAClean[!is.na(allSRAClean$mergedGeography) & !is.na(allSRAClean$mergedRace), columnsILike], n = 500), n=50)
+
+mergeCheck <- as.data.frame(table(allSRAClean$mergedGeography, allSRAClean$mergedRace))
+mergeCheck[mergeCheck$Freq > 0,]
+```
+
+### Updating the descriptors:
+
+We start by loading the cleaned up descriptors and doing a really simple updating:
+```{r update-descriptors-1}
+popDescriptors <- read.csv("20240514_descriptor_terms_new_schema.csv")
+
+# Split it into two to separate the ancestry and race calls:
+popGeoNew <- popDescriptors[popDescriptors$IGR.coding %in% "geography",]
+popRaceNew <- popDescriptors[popDescriptors$IGR.coding %in% "race",]
+
+# And now we replace those labels with the ones in the schema:
+allSRAClean$newGeography <- popGeoNew[match(allSRAClean$mergedGeography, popGeoNew$Term),]$IGR.term
+allSRAClean$newRace <- popRaceNew[match(allSRAClean$mergedRace, popRaceNew$Term),]$IGR.term
+
+table(allSRAClean$newGeography)
+table(allSRAClean$newRace)
+```
+
+Looks good! But we need to make sure the right things got relabeled as the right things... Column one in the table shows the original term, column two the new term:
+
+```{r update-descriptors-2}
+raceTerms <- as.data.frame(table(allSRAClean$mergedRace, allSRAClean$newRace))
+geographyTerms <- as.data.frame(table(allSRAClean$mergedGeography, allSRAClean$newGeography))
+
+raceTerms[raceTerms$Freq>0,]
+geographyTerms[geographyTerms$Freq>0,]
+```
+
+That's all very nice, but we know there are some terms in the wrong column... eg Bruneian and Malay are races in the original data but we don't expect them there, and thus are not getting processed above. So we check the ones where there was info in the column before I assigned new IDs, but not after:
+
+```{r update-descriptors-3}
+allSRAClean$raceFails <- (!is.na(allSRAClean$mergedRace) & is.na(allSRAClean$newRace)) # Fishing out samples that had some sort of info in the racial column BEFORE updating, but are now NA, because the term in the column was either geography or nonsense
+
+allSRAClean$geographyFails <- (!is.na(allSRAClean$mergedGeography) & is.na(allSRAClean$newGeography)) # Viceversa - samples where the mergedGeography column contains info but the updated one doesn't.
+
+# Update... 
+columnsILike <- c(columnsILike, 38:51)
+
+head(allSRAClean[allSRAClean$raceFails == TRUE,columnsILike], n= 20)
+head(allSRAClean[allSRAClean$geographyFails == TRUE,columnsILike], n = 20)
+
+table(allSRAClean[allSRAClean$raceFails,]$mergedRace)
+table(allSRAClean[allSRAClean$geographyFails,]$mergedGeography)
+
+# How many of the race terms geta geography assignment? I'm too lazy to learn dplyr so we create a couple of subsets and then merge things again:
+RaceOK <-  allSRAClean[allSRAClean$raceFails == FALSE,] #These got classified correctly, we think.
+RaceOK$rescueGeography <- RaceOK$newGeography
+
+RaceFails <- allSRAClean[allSRAClean$raceFails == TRUE,] # These are samples that used to have a racial term assignment but don't after the first pass, suggesting it was actually a geography-related term... so we search for those terms in the geography descriptors instead:
+RaceFails$rescueGeography <- popGeoNew[match(RaceFails$mergedRace, popGeoNew$Term),]$IGR.term
+
+allSRATemp <- rbind(RaceOK, RaceFails) 
+
+# Now we do the same to the mismatches in the geography term:
+geographyOK <-  allSRATemp[allSRATemp$geographyFails == FALSE,]
+geographyOK$rescueRace <- geographyOK$newRace
+geographyFails <- allSRATemp[allSRATemp$geographyFails == TRUE,] # Again, samples that had a geography assignment but don't anymore, because the term was not actually a geography term
+geographyFails$rescueRace <- popRaceNew[match(geographyFails$mergedGeography, popRaceNew$Term),]$IGR.term #Update these too, searching for the terms in the racial descriptors
+
+allSRATemp <- rbind(geographyOK, geographyFails)
+```
+
+How well did that work? Below the first table shows the total number of assignments to each descriptor now that I've cleaned up a bit, and the second one shows what it was before I mucked around with it (despite the `new` in the name. )
+
+```{r tabulate-updates}
+# Race terms
+table(allSRATemp$rescueRace) 
+table(allSRATemp$newRace) 
+
+# Geography terms
+table(allSRATemp$rescueGeography) 
+table(allSRATemp$newGeography) 
+```
+
+So in both cases, the rescue column contains fewer people than the first attempt at updating, but that's ok. We know `new` contained good terms only from looking at it higher up, whereas `rescue` took all the samples that contained some sort of info in the original columns, regardless of whether they were correct or not, and compared them to the *other* descriptor - searched for racial terms amongst the geographic ones, and viceversa, which explains the drop. Since some terms are in both `popGeoNew` and `popRaceNew` the fluctuation makes sense. 
+
+So we coalesce `new` and `rescue` into a single column, with `new` taking precedence because we have higher confidence in it being correct:
+
+```{r update-descriptors-4}
+allSRATemp$finalRace <- coalesce(allSRATemp$newRace, allSRATemp$rescueRace) 
+allSRATemp$finalGeography <- coalesce(allSRATemp$newGeography, allSRATemp$rescueGeography) 
+```
+And we QC this! Now comparing `final` to `new`, where `final` is where we want to be. 
+
+```{r update-descriptors-5}
+table(allSRATemp$finalRace)
+table(allSRATemp$newRace) 
+
+table(allSRATemp$finalGeography)
+table(allSRATemp$newGeography) 
+```
+
+Everything went up and nothing went down, but nothing went, like, absurdly up, suggesting we caught some marginal cases only, which is what we wanted. We knew there were a lot of racial terms in the ethnicity column, so the jump in Black and White numbers makes sense, whereas the geography jumps are milder because the ETHNICITY column was used for the first round of assignments and that's where most of the info was to begin with. 
+
+Anyhow, let's manually check some edge cases... the first output is SG samples where the races are Malay, Chinese, Indian; since we're not creating the non-US descriptors column yet there should only be info in `finalGeography` and indeed this is the case.
+
+```{r update-descriptors-6}
+# One more update...
+columnsILike <- c(columnsILike, 52:55)
+
+# head(allSRATemp[allSRATemp$raceFails == TRUE & !grepl("hisp", allSRATemp$mergedRace, ignore.case=T) & !grepl("not", allSRATemp$mergedRace, ignore.case=T),columnsILike], n = 500) 
+# This is fine, but the output is endless!
+
+allSRAClean <- allSRATemp
+(rm(list=c("allSRATemp", "RaceOK", "RaceFails", "geographyOK", "geographyFails")))
+```
+
+Almost done! We're happy with the rescues, but let's do one final check for studies that had valid descriptors in both the `mergedRace` and `mergedGeography` columns, which might need cleaning up:
+
+```{r update-descriptors-7}
+dim(allSRAClean[!is.na(allSRAClean$finalGeography) & !is.na(allSRAClean$finalRace),])
+mismatches <- allSRAClean[!is.na(allSRAClean$finalGeography) & !is.na(allSRAClean$finalRace),] 
+
+fewerColumns <- c(1, 2, 3, 46:55)
+
+# This is caused by seven studies that need manual review:
+table(mismatches$SRA.Study) 
+# Let's have a quick look at them:
+by(mismatches, mismatches$SRA.Study, function(x) head(x[,fewerColumns], n=50)) 
+```
+So now we clean up those seven studies, one at a time, which is a bit tedious, but...
+
+* SRP068551 <- reported Ethnicity (Han Chinese) and Race (Asian), set to geography: East Asia only
+* SRP107326 <- reported Ethnicity (Taiwanese) and Race (Mongoloid), set to geography: East Asia only
+* SRP122876 <- reported race (Caucasian) and Population (Danish), set to geography: Europe only
+* SRP159625 <- reported ethnicity (English) and Race (Black), but reported race more often than ethnicity. Study was carried out at NIH in Bethesda, set to race: Black or African American only. No idea where 'English' came from. 
+* SRP179998 <- reported race (various) and ethnicity (Brazilian), Brazil recognises the concept of races legally but they are not aligned with USA ones, set to geography: Americas only
+* SRP292867 <- reported ethnicity (Korean/German) and race (Asian/White), set to geography only
+* SRP362734 <- reported ethnicity (Asian) and race (Asian), data generated in China, set to geography: Asia
+
+```{r cleanup-pops-1, eval=T}
+allSRAClean[allSRAClean$SRA.Study %in% c("SRP068551", "SRP107326", "SRP122876", "SRP292867", "SRP179998", "SRP362734"),]$finalRace <- NA
+allSRAClean[allSRAClean$SRA.Study %in% "SRP159625",]$finalGeography <- NA
+```
+
+### Who's using what terms?
+
+This is useful to write about, I think - we do not know why people are using these terms, but we can look into a few example studies to try to disambiguate - would consider the University of Tokyo and Salamanca ones. 
+
+I noticed that a bunch of studies are ending up in the race column because they use Caucasian or white, despite being done outside the USA; I also noticed that a lot of Chinese studies use 'Asian' when I think we could be more specific, which is making me look more closely at those two possibilities:
+
+```{r disentangling-asian}
+asia <- allSRAClean[allSRAClean$finalGeography %in% "Asia",] 
+asiaSummary <- asia %>% count(SRA.Study, Center.Name)
+asiaSummary
+```
+
+What about the use of white/caucasian/whatever else outside the USA? 
+```{r disentangling-white}
+white <- allSRAClean[allSRAClean$finalRace %in% "White",]
+whiteSummary <- white %>% count(SRA.Study, Center.Name, mergedRace, mergedGeography)
+whiteSummary
+```
+
+There's certainly instances of this, see a lot of Australian, European and Asian sites submitting white samples. Conversely, what about geography: European?
+
+```{r disentangling-white-2}
+europe <- allSRAClean[allSRAClean$finalGeography %in% "Europe",]
+europeSummary <- europe %>% count(SRA.Study, Center.Name, mergedRace, mergedGeography)
+europeSummary
+```
+
+What about... race: Asian, but again outside the USA?
+
+```{r disentangling-asia-2}
+asian <- allSRAClean[allSRAClean$finalRace %in% "Asian",]
+asianSummary <- asian %>% count(SRA.Study, Center.Name, mergedRace, mergedGeography)
+asianSummary
+```
+
+And African Americans?
+
+```{r disentangling-baa}
+baa <- allSRAClean[allSRAClean$finalRace %in% "Black or African American",]
+baaSummary <- baa %>% count(SRA.Study, Center.Name, mergedRace, mergedGeography)
+baaSummary
+```
+
+Again, a couple of hits to places clearly outside the USA, which should be updated to geography calls? Need to discuss, because the University of Tokyo probably did mean to use the racial terms, considering they used multiple ones in the same study... but then they have their singular 'Arabic' sample as a race UGH
+
+```{r university-of-tokyo}
+allSRAClean[allSRAClean$SRA.Study %in% "SRP188296", fewerColumns]
+```
+
+But now...
+
+### Coding hispanic/non-hispanic!
+
+We're going to do this the same way we did things last time, except that the info for Hispanic is scattered across a bunch of different columns; from looking at the spreadsheet they go, in order: `ETHNICITY`, `RACE`, `DONOR_ETHNICITY`, `race.ethnicity`, `ancestry`
+
+```{r hispanic-1}
+popHispanic <- popDescriptors[!is.na(popDescriptors$hispanic),]
+
+allSRAClean$hispanic <- NA
+
+for (i in 1:nrow(popHispanic)){
+  allSRAClean[allSRAClean[,popHispanic$SRA.coding[i]] %in% popHispanic$Term[i],]$hispanic <- popHispanic$hispanic[i] 
+}
+
+table(allSRAClean$hispanic)
+head(allSRAClean[allSRAClean$hispanic %in% "hispanic",])
+head(allSRAClean[allSRAClean$hispanic %in% "non.hispanic",])
+```
+Looking good! And so...
+
+### The final table!
+
+```{r update-descriptors-final}
+table(is.na(allSRAClean$finalGeography))
+table(is.na(allSRAClean$finalRace)) 
+table(is.na(allSRAClean$finalGeography), is.na(allSRAClean$finalRace)) # 2000 samples with neither label oh noes! 
+
+# Let's have a quick look and then get rid of them:
+head(allSRAClean[is.na(allSRAClean$finalGeography) & is.na(allSRAClean$finalRace) & is.na(allSRAClean$hispanic),]) 
+allSRAClean <- (allSRAClean[!is.na(allSRAClean$finalRace) | !is.na(allSRAClean$finalGeography) | !is.na(allSRAClean$hispanic),])
+
+table(allSRAClean$finalGeography)
+table(allSRAClean$finalRace)
+
+allSRAFinal <- allSRAClean[,c(1:45, 54:56)]
+dim(allSRAFinal)
+
+# Some nice plots about this, quickly:
+sampleGeography <- allSRAFinal %>% count(SRA.Study, finalGeography) %>% drop_na(finalGeography)
+sampleRace <- allSRAFinal %>% count(SRA.Study, finalRace) %>% drop_na(finalRace)
+meltSampleGeography <- melt(sampleGeography)
+meltSampleRace <- melt(sampleRace)
+
+ggplot(meltSampleGeography, aes(x = finalGeography, y=value,fill=finalGeography)) +
+  geom_boxplot(width=0.5, alpha=0.4) +
+  geom_jitter(size=1, width=0.2) +
+  theme_bw() +
+  ggtitle("Geography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleGeography, aes(x = finalGeography, y=value,fill=finalGeography)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("Geography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleRace, aes(x = finalRace, y=value,fill=finalRace)) +
+  geom_boxplot(width=0.5, alpha=0.4) +
+  geom_jitter(size=1, width=0.2) +
+  theme_bw() +
+  ggtitle("Race across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+ggplot(meltSampleRace, aes(x = finalRace, y=value,fill=finalRace)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("Race across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+# And then cleaning out a bunch of rows that are all NA
+not_all_na <- function(x) any(!is.na(x))
+allSRAFinal <- allSRAFinal %>% select(where(not_all_na))
+dim(allSRAFinal)
+
+saveRDS(allSRAFinal, file="allSRAFinal.rds")
+```

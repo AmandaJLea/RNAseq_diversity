@@ -1,0 +1,161 @@
+---
+title: "Fetching missing sequencing sites."
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+We wanted to work out who is sequencing what, and for that we need to fill in a lot of the studies that were submitted by GEO to SRA instead of directly by the submitter. This requires a couple of steps:
+
+First we convert from SRA.Study to Bioproject ID. Then we use the Bioproject ID to fetch the summary using NCBI's eutils' package, so we gotta mix up bash and R in here... yeugh. 
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(viridis)
+library(rentrez)
+library(tidyverse)
+
+options(device = "quartz")
+```
+
+Grab all the SRA IDs that were deposited by GEO and let's figure out where we go from there...
+
+```{r depositing-site, include=F, eval=F}
+allSRAFinal <- readRDS("allSRAFinalTissues.rds")
+length(unique(allSRAFinal$Center.Name))
+
+siteStudy <- allSRAFinal %>% count(Center.Name, SRA.Study)
+geoStudies <- siteStudy[siteStudy$Center.Name %in% "GEO",]$SRA.Study 
+
+# This took forever to fix but...
+getBPid <- sapply(geoStudies, function(x) entrez_link(dbfrom="sra", id=entrez_search(db = "sra", term = x)$ids[1], db="all")$links$sra_bioproject_all)
+getBPid
+
+getSubmitter <- sapply(getBPid, function(x) extract_from_esummary(entrez_summary(db="bioproject", x[[1]][1]), "submitter_organization"))
+getSubmitter
+
+getSubmitterdf <- as.data.frame(getSubmitter)
+getSubmitterdf$SRA <- rownames(getSubmitterdf)
+
+# And now we add that info back to the relevant column, and replace the GEO calls. I honestly can't remember if I need to vectorise or not but whatever. 
+allSRAFinal$finalSite <- NA
+
+for (i in 1:nrow(getSubmitterdf)){
+  allSRAFinal[allSRAFinal$SRA.Study %in% getSubmitterdf$SRA[i],]$finalSite <- getSubmitterdf$getSubmitter[i]    
+}
+
+allSRAFinal$finalSite <- coalesce(allSRAFinal$finalSite, allSRAFinal$Center.Name)
+
+# Is GEO really gone???
+length(unique(allSRAFinal$Center.Name))
+length(unique(allSRAFinal$finalSite)) # Well that definitely increased, so that's good. 
+
+siteTable <- allSRAFinal %>% count(finalSite, SRA.Study)
+
+# I still need to work out what is in what country, but at least I have a single table... 
+write.table(siteTable, file="final_Site_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+
+# Anyhow, let's make sure we only do this once:
+saveRDS(allSRAFinal, "allSRAFinalTissuesCenters.rds")
+```
+
+I decided that working out the country was easiest if done by hand, so:
+
+```{r update-sampling-site-country}
+allSRAFinal <- readRDS("allSRAFinalTissuesCenters.rds")
+countryList <- read.csv("20240624_final_Site_descriptors.csv")
+
+allSRAFinal$finalCountry <- NA
+
+for (i in 1:nrow(countryList)){
+  allSRAFinal[allSRAFinal$SRA.Study %in% countryList$SRA.Study[i],]$finalCountry <- countryList$Country[i]    
+}
+
+sort(table(allSRAFinal$finalCountry), decreasing=T)
+
+```
+
+And now my other nemesis... disease state. There's a lot of cancer info already in there, but what else is there?
+
+```{r disease-status-1, include=T, eval=F}
+# Start by checking the columns where disease status might hide, that we haven't looked at already:
+names(allSRAFinal)
+head(sort(table(allSRAFinal$disease), decreasing=T), n=20)
+head(sort(table(allSRAFinal$disease_state), decreasing=T), n=20)
+head(sort(table(allSRAFinal$Diagnosis), decreasing=T), n=20)
+head(sort(table(allSRAFinal$clinical_information), decreasing=T), n=20)
+head(sort(table(allSRAFinal$health_state), decreasing=T), n=20)
+head(sort(table(allSRAFinal$DONOR_HEALTH_STATUS), decreasing=T), n=20)
+
+# All of these make sense except for clinical_information, so... we go back to doing the same stuff we did with the population descriptors.
+write.table(as.data.frame(table(allSRAFinal$disease)), file="disease_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$disease_state)), file="disease_state_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$Diagnosis)), file="Diagnosis_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$health_state)), file="health_state_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$DONOR_HEALTH_STATUS)), file="DONOR_HEALTH_STATUS_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+```
+
+And now to check the intersections etc etc...
+
+```{r disease-status-2}
+# First, how independent are all of these:
+table(is.na(allSRAFinal$disease))
+table(is.na(allSRAFinal$Diagnosis))
+table(is.na(allSRAFinal$disease_state))
+table(is.na(allSRAFinal$health_state))
+table(is.na(allSRAFinal$DONOR_HEALTH_STATUS))
+      
+# And now please tell me they don't overlap too much (F/F would be overlap):
+table(is.na(allSRAFinal$disease), is.na(allSRAFinal$Diagnosis))
+table(is.na(allSRAFinal$disease), is.na(allSRAFinal$disease_state))
+table(is.na(allSRAFinal$disease), is.na(allSRAFinal$health_state)) # ARGH
+table(is.na(allSRAFinal$disease), is.na(allSRAFinal$DONOR_HEALTH_STATUS)) #ARGH
+
+table(is.na(allSRAFinal$disease_state), is.na(allSRAFinal$Diagnosis))
+table(is.na(allSRAFinal$disease_state), is.na(allSRAFinal$health_state))
+table(is.na(allSRAFinal$disease_state), is.na(allSRAFinal$DONOR_HEALTH_STATUS))
+
+table(is.na(allSRAFinal$health_state), is.na(allSRAFinal$Diagnosis))
+table(is.na(allSRAFinal$health_state), is.na(allSRAFinal$DONOR_HEALTH_STATUS))
+
+table(is.na(allSRAFinal$Diagnosis), is.na(allSRAFinal$DONOR_HEALTH_STATUS))
+
+# Checking the overlaps:
+allSRAFinal[!is.na(allSRAFinal$disease) & !is.na(allSRAFinal$DONOR_HEALTH_STATUS),] # DONOR_HEALTH_STATUS wins, so when we coalesce it will go first.
+
+allSRAFinal %>% count(disease, health_state) # Disease wins.
+
+# Now we update terms:
+diseaseTerms <- read.csv("20240624_disease_descriptors.csv")
+allSRAFinal$finalDisease <- NA
+
+# The laziest way to deal with the ordering here is to reorder the diseaseTerms file by the order we want:
+# Diagnosis, health_state, disease_state, disease, DONOR_HEALTH_STATUS 
+# That way as we move down it, we'll overwrite previously incorrect assignments:
+
+diseaseTerms$coded.as <- factor(diseaseTerms$coded.as, levels=c("Diagnosis", "health_state", "disease_state", "disease", "DONOR_HEALTH_STATUS"))
+diseaseTerms <- diseaseTerms[order(diseaseTerms$coded.as),]
+
+for (i in 1:nrow(diseaseTerms)){
+  allSRAFinal[allSRAFinal[,as.character(diseaseTerms$coded.as[i])] %in% diseaseTerms$Term[i],]$finalDisease <- diseaseTerms$grouping[i] 
+}
+
+# And we mustn't forget to add all the other cancer calls!
+allSRAFinal[allSRAFinal$finalOrgan %in% "cancer",]$finalDisease <- "cancer"
+table(allSRAFinal$finalDisease)
+
+# Check that this actually worked...
+allSRAFinal[!is.na(allSRAFinal$health_state) & !is.na(allSRAFinal$disease),]
+
+# Yep looks good, now we can really analyse things:
+saveRDS(allSRAFinal, "allSRAFinalTissuesCentersDisease.rds")
+
+```

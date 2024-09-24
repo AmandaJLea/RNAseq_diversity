@@ -1,0 +1,153 @@
+---
+title: "Incorporating the other datasets, pt 1"
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Files from Amanda and Grace are in different formats than the SRA one, so they need to be processed so we can do some joint plotting etc. 
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this recountSimplely because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(patchwork)
+library(ggalluvial)
+library(RColorBrewer)
+library(ggrepel)
+library(viridis)
+library(thematic)
+library(rentrez)
+
+options(device = "quartz")
+```
+
+Let's start with the easier one - dbgap. It really just needs melting, I think, but let's explore it a bit first...
+
+```{r dbgap-cleanup}
+dbgap <- read.table("21Jul24_parsed_dbGap.csv", header=T)
+
+# There's some labels we need to reconcile/deal with... terms are a mixture of geographic and US racial - what is the difference between African American and African?
+summary(dbgap[,1:9])
+colSums(dbgap[,1:9])
+
+# Let's filter it to rows with ancestry info, to save on the searching BioProject below:
+dbgap <- dbgap[rowSums(dbgap[,1:9]) > 0,]
+
+# We also wanted country of origin, and it seems like we can get that from the accession if we do some string splitting... because the accession is recognised by BioProject?
+
+dbgap <- dbgap %>% 
+  mutate(cleanAccession = str_split_i(accession, "\\.", 1))
+
+dim(dbgap) # So 36 studies only... yikes! So there must be some big studies here!
+sum(dbgap[,1:9])
+
+# Disgusting I love it
+siteInfo <- sapply(dbgap$cleanAccession, function(x) entrez_summary(db="bioproject", entrez_search(db = "bioProject", term = x)$ids[1])$submitter_organization)
+
+siteInfo <- data.frame(cleanAccession = names(siteInfo), cleanSite= siteInfo)
+# I cooooould sit here and try to grab the tissue info for the studies, but we would not be able to link it to specific donors, so there's no real point except for learning to wrangle XML files. Which are gnarly. So we move on. We might be able to consolidate the disease info, though. 
+
+dbgap <- left_join(dbgap, siteInfo)
+dbgap$finalCountry <- "USA"
+
+# Now we only need to consolidate the disease focus info, which is easy enough, although it does mean updating the columns a bit:
+# write.table(dbgap[,c(18,22)], file="dbgap_disease_descriptors_raw.tsv", sep="\t", quote=F, row.names=F)
+
+dbgapDisease <- read.csv("20240731_dbgap_disease_descriptors.csv")
+
+dbgap <- left_join(dbgap, dbgapDisease)
+names(dbgap)[26] <- "finalDisease"
+
+dbgapMelt <- melt(dbgap[,c(1:18,22,24,26,28)], id=names(dbgap)[c(10:18,22,24,26,28)])
+
+# And now a bit of cleaning:
+dbgapMelt <- dbgapMelt %>%
+  mutate(variable = gsub("_", " ", variable)) %>%
+  mutate(variable = gsub("\\.", " ", variable)) %>%
+  mutate(variable = gsub("or ", "or\n", variable)) 
+
+dbgapMelt %>%
+  group_by(variable) %>%
+  summarise(sum(value))
+
+dbgapMelt$variable <- factor(dbgapMelt$variable)
+
+saveRDS(dbgapMelt, file="20240731_dbgap_final.rds")
+```
+
+Next up, the manual curation one. Grace confirmed that this is the right file, as it's been filtered down to individual level counts, and there's no need to worry about tissues.  
+
+```{r recountSimple-cleanup}
+litRevSimple <- read.csv("20240916_LitReviewFinalFinal_Merged.csv") # Actual data
+litRevAncestries <- read.csv("20240731_manual_population_descriptors.csv") # Pop descriptors, but need to be switched to upper case... we do this for both things to ensure they're consistent:
+
+litRevAncestries$ReportedT <- str_to_title(litRevAncestries$ReportedT)
+litRevSimple$ReportedT <- str_to_title(litRevSimple$ReportedT)
+
+litRevSimple <- litRevSimple %>% 
+  mutate(tempRace = ifelse(InterpretS == "race", ReportedT, NA)) %>% 
+  mutate(tempGeo = ifelse(InterpretS == "geography", ReportedT, NA))         
+
+litRevRace <- litRevAncestries[litRevAncestries$InterpretS %in% "race",] 
+litRevGeo <- litRevAncestries[litRevAncestries$InterpretS %in% "geography",]
+
+litRevSimple$finalRace <- litRevRace[match(litRevSimple$tempRace, litRevRace$ReportedT, incomparables = NA, nomatch = NA),]$InterpretT
+litRevSimple$finalGeo <- litRevGeo[match(litRevSimple$tempGeo, litRevGeo$ReportedT, incomparables = NA, nomatch = NA),]$InterpretT
+
+litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),] # Gotta fix all of the hispanic samples, and decide what to do with the Unknowns - I prefer not to plot those, and as of my email to Grace on 20240916, we're excluding them. 
+
+litRevSimple <- litRevSimple %>%
+  mutate(finalRace = ifelse(InterpretT == "hispanic", "hispanic", finalRace)) 
+
+litRevSimple[is.na(litRevSimple$finalGeo) & is.na(litRevSimple$finalRace),]  
+
+# We gotta standardise this so it can use the same colour schemes as the SRA files, which means a bit of renaming of columns:
+
+litRevSimple <- litRevSimple %>%
+  mutate(finalGeo = gsub("^Asia$", "Asia (NOS)", finalGeo)) %>%
+  mutate(finalRace = gsub("or ", "or\n", finalRace)) %>%  
+  mutate(finalRace = gsub("and ", "and\n", finalRace)) %>%  
+  mutate(finalRace = if_else(grepl("hispanic", finalGeo), "Hispanic", finalRace)) %>%
+  mutate(finalRace = gsub("hispanic", "Hispanic", finalRace)) %>%
+  mutate(finalRace = gsub("multiple", "Multiple", finalRace)) %>%
+  mutate(finalGeo = if_else(grepl("hispanic", finalGeo), NA, finalGeo))
+
+# And let's sanity check this against the numbers Grace has in other tabs of the file, and in the paper. Total number of inds should be 3407
+
+litRevSimple %>%  
+  summarise(totalInds = sum(individs)) # Correct, 3407 in the file she sent me, including the unknowns
+
+# Breakdown by ancestry:
+litRevSimple %>% filter(InterpretS == "geography") %>% 
+  summarise(totalInds = sum(individs)) # Correct, expect 2143 when including unknowns
+
+litRevSimple %>% filter(!is.na(finalGeo)) %>% 
+  summarise(totalInds = sum(individs)) # Correct, expect 2126 when removing unknowns
+
+# Breakdown by race:
+litRevSimple %>% filter(InterpretS == "race") %>% 
+  summarise(totalInds = sum(individs)) # Correct, expect 1264 with unknowns
+
+litRevSimple %>% filter(!is.na(finalRace)) %>% 
+  summarise(totalInds = sum(individs)) # Correct, expect 1250 without unknowns
+
+# And now quick tabulating breakdowns:
+litRevSimple %>% filter(!is.na(finalGeo)) %>% 
+  group_by(finalGeo) %>% 
+  summarise(totalInds = sum(individs)) # Correct, match Grace's excel
+  
+litRevSimple %>% filter(!is.na(finalRace)) %>% 
+  group_by(finalRace) %>% 
+  summarise(totalInds = sum(individs)) # Correct, match Grace's excel
+
+# And now we basically have a melted dataframe already! 
+saveRDS(litRevSimple, file="20240916_manual_final.rds")
+```

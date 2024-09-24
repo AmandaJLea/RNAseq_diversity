@@ -1,0 +1,559 @@
+---
+title: "Diversity project tissue cleanup"
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+We need to get this to a usable place. The raw data is scattered over columns in a way similar to how ancestry and tissue were scattered, so this script looks pretty similar.
+
+### Cleaning up and pre-processing
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(rols)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(viridis)
+
+allSRAFinal <- readRDS("allSRAFinal.rds")
+
+```
+
+We begin by taking a quick look at the tissue type descriptors to get some numbers... Some of these clearly do not contain cell type info, but others do, and sorting those out is joyous. 
+
+```{r tissues-quick-look}
+table(allSRAFinal$Cell_type) # Useful
+table(allSRAFinal$Tissue) # Useful
+table(allSRAFinal$tissue_type) # Useful
+table(allSRAFinal$Sample_type) # Somewhat useful
+table(allSRAFinal$Sample.Name) # Nope
+table(allSRAFinal$source_name) # Useful
+table(allSRAFinal$source_material_cell_type) # goes with the next column
+table(allSRAFinal$source_material) #
+table(allSRAFinal$SAMPLE_TYPE) # Somewhat useful
+table(allSRAFinal$Sampling_site) # A single study once again...
+
+# The most useful ones are gonna be Tissue, Cell_type and source_name, I think
+(table(is.na(allSRAFinal$Tissue), is.na(allSRAFinal$Cell_type)))
+head(allSRAFinal[!is.na(allSRAFinal$Tissue) & !is.na(allSRAFinal$Cell_type), ])
+
+(table(is.na(allSRAFinal$Tissue), is.na(allSRAFinal$source_name)))
+head(allSRAFinal[!is.na(allSRAFinal$Tissue) & !is.na(allSRAFinal$source_name), ])
+
+(table(is.na(allSRAFinal$Cell_type), is.na(allSRAFinal$source_name)))
+head(allSRAFinal[!is.na(allSRAFinal$Cell_type) & !is.na(allSRAFinal$source_name), ])
+```
+
+The reason I went down this rabbit hole was that there were about 3000 samples that didn't have tissue info if we focused on the most complete categories: `Cell_type` and `Tissue`. I checked some manually and most of them seemed to have info in `source_name` and `Organism_part`, which I then rescued from the original SRA downloads... so let's look at whether we really need the info from the other columns too:
+
+```{r tissues-quick-look-2}
+head(allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type), ])
+head(allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type) & is.na(allSRAFinal$source_name), ])
+
+dim(allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type) & is.na(allSRAFinal$source_name) & is.na(allSRAFinal$tissue_type) & is.na(allSRAFinal$Organism_part), ])
+
+noInfo <- allSRAFinal[is.na(allSRAFinal$Tissue) & is.na(allSRAFinal$Cell_type) & is.na(allSRAFinal$source_name) & is.na(allSRAFinal$tissue_type) &is.na(allSRAFinal$Organism_part), ]
+table(noInfo$SRA.Study) 
+
+by(noInfo, noInfo$SRA.Study, function(x) head(x, n=20)) 
+
+```
+
+The only one there is the LCLs, ERP001942, which we'll fix later. Looking at the table there's a lot of redundancy between columns, or a lot of studies that report different kinds of info in different columns, so it is worth being strategic so we're not trying to disambiguate a bunch of weird things. 
+
+Once again, false/false is where we want to be looking
+
+```{r tissues-quick-look-3}
+table(is.na(allSRAFinal$Tissue), is.na(allSRAFinal$Cell_type)) # Fair amount of overlap
+table(is.na(allSRAFinal$Tissue), is.na(allSRAFinal$source_name)) # Lots of overlap
+table(is.na(allSRAFinal$Tissue), is.na(allSRAFinal$Organism_part)) # No one uses both of these at the same time
+
+table(is.na(allSRAFinal$Cell_type), is.na(allSRAFinal$source_name))
+table(is.na(allSRAFinal$Cell_type), is.na(allSRAFinal$Organism_part))
+```
+
+`source_name` is clearly the most redundant one, but I grabbed all of them anyhow and did some manual spotchecking and cleaning up of the term list, which I think is mostly ok/ok enough that results won't change too much. We'll want to keep an eye out on the disease columns later on, though, and on the new disease column I made from those...
+
+```{r write-tissue-descriptors, include=F, eval=F}
+write.table(as.data.frame(table(allSRAFinal$Tissue)), file="Tissue_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$Cell_type)), file="Cell_type_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$source_name)), file="source_name_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$tissue_type)), file="tissue_type_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$Organism_part)), file="Organism_part_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+```
+
+Now we explore a few ways of merging data... First we sanity check the order in which to merge...
+
+```{r tissues-merge-order, include=T, eval=F}
+# Merge the two tissue type columns:
+allSRAFinal$twoTissue <- coalesce(allSRAFinal$Tissue, allSRAFinal$tissue_type) 
+length(table(allSRAFinal$twoTissue)) # A few less than when you sum the other two together, but that's expected.
+table(is.na(allSRAFinal$twoTissue)) # 18k have some sort of tissue assignment
+
+allSRAFinal$threeTissue <- coalesce(allSRAFinal$twoTissue, allSRAFinal$Organism_part)
+length(table(allSRAFinal$threeTissue)) # A few less than when you sum the other two together, but that's expected.
+table(is.na(allSRAFinal$threeTissue)) # only gained like 600... 
+
+allSRAFinal$fourTissue <- coalesce(allSRAFinal$threeTissue, allSRAFinal$Cell_type)
+length(table(allSRAFinal$fourTissue)) # A few less than when you sum the other two together, but that's expected.
+table(is.na(allSRAFinal$fourTissue)) # 21k have some sort of tissue assignment
+
+allSRAFinal$fiveTissue <- coalesce(allSRAFinal$fourTissue, allSRAFinal$source_name)
+length(table(allSRAFinal$fiveTissue)) # A few less than when you sum the other two together, but that's expected.
+table(is.na(allSRAFinal$fiveTissue)) # 21k have some sort of tissue assignment
+
+# The missing 464 are the LCLS from that one paper, so we're good there, we'll fix them later. 
+
+# What kind of gaps did we fill with each step?
+head(allSRAFinal[!is.na(allSRAFinal$twoTissue) & is.na(allSRAFinal$Tissue),], n = 20)
+head(allSRAFinal[!is.na(allSRAFinal$threeTissue) & is.na(allSRAFinal$twoTissue),], n = 20)
+head(allSRAFinal[!is.na(allSRAFinal$fourTissue) & is.na(allSRAFinal$threeTissue),], n = 20)
+head(allSRAFinal[!is.na(allSRAFinal$fiveTissue) & is.na(allSRAFinal$fourTissue),], n = 20)
+
+head(sort(table(allSRAFinal$twoTissue), decreasing = T)) #
+head(sort(table(allSRAFinal$threeTissue), decreasing = T)) #
+head(sort(table(allSRAFinal$fourTissue), decreasing = T)) #
+head(sort(table(allSRAFinal$fiveTissue), decreasing = T)) #
+```
+
+# And now it's time to update each of those, just for sanity checking, before we pick which approach to go with
+
+For some reason the match command won't work well with the indexing inside the command, so we gotta separate it out. Don't care to troubleshoot. 
+
+```{r tissues-merge-update}
+cleanInfo <- read.csv("20240616_cell_type_tissue_descriptors.csv")
+
+cleanTissue <- cleanInfo[cleanInfo$coded.as %in% "tissue",]
+cleanTissue_type <- cleanInfo[cleanInfo$coded.as %in% "tissue_type",]
+cleanOrganism_part <- cleanInfo[cleanInfo$coded.as %in% "Organism_part",]
+cleanCell_type <- cleanInfo[cleanInfo$coded.as %in% "cell_type",]
+cleanSource_name <- cleanInfo[cleanInfo$coded.as %in% "source_name",]
+
+# This is going to be really annoying, but I think it's easiest to do it by coalescing five different updated columns at the end... except it's ten, because we do system and organ.
+
+allSRAFinal$tissueSystem <- cleanTissue[match(allSRAFinal$Tissue, cleanTissue$Term, incomparables = NA, nomatch = NA),]$system
+allSRAFinal$tissue_typeSystem <- cleanTissue_type[match(allSRAFinal$tissue_type, cleanTissue_type$Term, incomparables = NA, nomatch = NA),]$system
+allSRAFinal$Organism_partSystem <- cleanOrganism_part[match(allSRAFinal$Organism_part, cleanOrganism_part$Term, incomparables = NA, nomatch = NA),]$system
+allSRAFinal$Cell_typeSystem <- cleanCell_type[match(allSRAFinal$Cell_type, cleanCell_type$Term, incomparables = NA, nomatch = NA),]$system
+allSRAFinal$source_nameSystem <- cleanSource_name[match(allSRAFinal$source_name, cleanSource_name$Term, incomparables = NA, nomatch = NA),]$system
+
+allSRAFinal$tissueOrgan <- cleanTissue[match(allSRAFinal$Tissue, cleanTissue$Term, incomparables = NA, nomatch = NA),]$organ
+allSRAFinal$tissue_typeOrgan <- cleanTissue_type[match(allSRAFinal$tissue_type, cleanTissue_type$Term, incomparables = NA, nomatch = NA),]$organ
+allSRAFinal$Organism_partOrgan <- cleanOrganism_part[match(allSRAFinal$Organism_part, cleanOrganism_part$Term, incomparables = NA, nomatch = NA),]$organ
+allSRAFinal$Cell_typeOrgan <- cleanCell_type[match(allSRAFinal$Cell_type, cleanCell_type$Term, incomparables = NA, nomatch = NA),]$organ
+allSRAFinal$source_nameOrgan <- cleanSource_name[match(allSRAFinal$source_name, cleanSource_name$Term, incomparables = NA, nomatch = NA),]$organ
+
+# And now we coalesce in the order we established above...
+allSRAFinal$finalSystem <- coalesce(allSRAFinal$tissueSystem, allSRAFinal$tissue_typeSystem, allSRAFinal$Organism_partSystem, allSRAFinal$Cell_typeSystem, allSRAFinal$source_nameSystem)
+
+allSRAFinal$finalOrgan <- coalesce(allSRAFinal$tissueOrgan, allSRAFinal$tissue_typeOrgan, allSRAFinal$Organism_partOrgan, allSRAFinal$Cell_typeOrgan, allSRAFinal$source_nameOrgan)
+```
+
+So that seems like it should have worked, but we should sanity check it a bit more... First, do things agree across the descriptor levels, and if not, what should we do?
+
+```{r tissues-merge-check-figures}
+table(allSRAFinal$finalSystem, allSRAFinal$tissueSystem) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("System annotation") +
+    xlab("Tissue") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+table(allSRAFinal$finalSystem, allSRAFinal$tissue_typeSystem) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("System annotation") +
+    xlab("tissue_type") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+table(allSRAFinal$finalSystem, allSRAFinal$Organism_partSystem) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("System annotation") +
+    xlab("Organism_part") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Yeeeeeep these two are fucked up. Some of it will have been my old approach, but other stuff is gonna be harder to clean up. 
+table(allSRAFinal$finalSystem, allSRAFinal$Cell_typeSystem) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("System annotation") +
+    xlab("Cell_type") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+table(allSRAFinal$finalSystem, allSRAFinal$source_nameSystem) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("System annotation") +
+    xlab("source_name") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# And now same for organs:
+table(allSRAFinal$finalOrgan, allSRAFinal$tissueOrgan) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Organ annotation") +
+    xlab("Tissue") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+table(allSRAFinal$finalOrgan, allSRAFinal$tissue_typeOrgan) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Organ annotation") +
+    xlab("tissue_type") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+table(allSRAFinal$finalOrgan, allSRAFinal$Organism_partOrgan) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Organ annotation") +
+    xlab("Organism_part") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Yeeeeeep these two are fucked up. Some of it will have been my old approach, but other stuff is gonna be harder to clean up. 
+table(allSRAFinal$finalOrgan, allSRAFinal$Cell_typeOrgan) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Organ annotation") +
+    xlab("Cell_type") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+table(allSRAFinal$finalOrgan, allSRAFinal$source_nameOrgan) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Organ annotation") +
+    xlab("source_name") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# How often do these two agree?
+table(allSRAFinal$Cell_typeOrgan, allSRAFinal$source_nameOrgan) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Organ annotation") +
+    xlab("source_name") +
+    ylab("Cell_type") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# How often do these two agree?
+table(allSRAFinal$finalOrgan, allSRAFinal$finalSystem) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Master annotation") +
+    xlab("System") +
+    ylab("Organ") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+Uh oh... There's a fair bit of disagreement when we compare the cell type based assignments and the tissue based assignments. And some kind of make sense, and some really don't, like, intestine/iPSC or reproductive/digestive
+
+```{r tissues-merge-update-2}
+# Let's look only at the discrepancies... write a little function to show us because otherwise it gets annoying
+seeMismatches <- function(Var1, Var2){
+  messySubset <- allSRAFinal[allSRAFinal[[Var1]] != allSRAFinal[[Var2]],] %>% .[!is.na(.[[Var2]]),]
+  return(messySubset)
+  }
+
+cellOrganMismatches <- seeMismatches("finalOrgan", "Cell_typeOrgan")
+cellSystemMismatches <- seeMismatches("finalSystem", "Cell_typeSystem")
+sourceOrganMismatches <- seeMismatches("finalOrgan", "source_nameOrgan")
+sourceSystemMismatches <- seeMismatches("finalSystem", "source_nameSystem")
+
+table(cellOrganMismatches$finalOrgan, cellOrganMismatches$Cell_typeOrgan)
+table(cellSystemMismatches$finalSystem, cellSystemMismatches$Cell_typeSystem)
+table(sourceOrganMismatches$finalOrgan, sourceOrganMismatches$source_nameOrgan)
+table(sourceSystemMismatches$finalSystem, sourceSystemMismatches$source_nameSystem)
+
+# Make my life easier
+columnsILike <- c(1:3, 6,7,8,13,26,29,44,45,49,50,51,52)
+ 
+# by(cellOrganMismatches, c(cellOrganMismatches$finalOrgan), function(x) head(x[,columnsILike], n = 20))
+# by(cellSystemMismatches, c(cellSystemMismatches$Cell_typeSystem), function(x) head(x[,columnsILike], n = 20))
+# by(sourceOrganMismatches, c(sourceOrganMismatches$finalOrgan), function(x) head(x[,columnsILike], n = 20))
+# by(sourceSystemMismatches, c(sourceSystemMismatches$finalSystem), function(x) head(x[,columnsILike], n = 20))
+
+table(cellOrganMismatches$SRA.Study)
+table(cellSystemMismatches$SRA.Study)
+table(sourceOrganMismatches$SRA.Study)
+table(sourceSystemMismatches$SRA.Study)
+
+# by(cellOrganMismatches, c(cellOrganMismatches$SRA.Study), function(x) head(x[,columnsILike], n = 20))
+# by(cellSystemMismatches, c(cellSystemMismatches$SRA.Study), function(x) head(x[,columnsILike], n = 20))
+# by(sourceOrganMismatches, c(sourceOrganMismatches$SRA.Study), function(x) head(x[,columnsILike], n = 20))
+# by(sourceSystemMismatches, c(sourceSystemMismatches$SRA.Study), function(x) head(x[,columnsILike], n = 20))
+```
+
+Some of these are clear incorrect assignments when cleaning up the tissue stuff, and so the big spreadsheet needs to be updated, eg, the foreskin fibroblasts from Coriell which came up as urogenital (SRP070663, now fixed). However, there's also a lot of problems with samples that do end up in different classes depending of which column one looks at, eg, SRP266877 should really be under iPSC but isn't because tissue is given as blood, even though it's an established cell line... Not all the cases are clear cut, and some are straight up contradictory, eg, DRP001797, which says endocardial cells but also endothelium of blood vessels, or, SRP056287, which gives cell type as cortical neurons, and tissue as fibroblast and which seem to be iPSC-derived cortical neurons (updated), or SRP259538, which lists cardiomyocyte and foetal lung (but they're cell-line derived anyhow)
+
+There's a lot of immune cells sampled in the lung, and I'm not sure what to do with them - keep them as both things?
+
+So that's a first pass, but we need to get rid of established cell lines and then come back to some of this. Next, some checks for missingness etc
+
+```{r tissues-merge-update-missing}
+table(allSRAFinal$finalSystem)
+table(allSRAFinal$finalOrgan)
+
+table(is.na(allSRAFinal$finalSystem), is.na(allSRAFinal$finalOrgan))
+table(is.na(allSRAFinal$finalSystem)) 
+table(is.na(allSRAFinal$finalOrgan))
+
+noAssignment <- allSRAFinal[is.na(allSRAFinal$finalOrgan) & is.na(allSRAFinal$finalSystem),]
+table(noAssignment$SRA.Study)
+# by(noAssignment, noAssignment$SRA.Study, function(x) head(x))
+```
+
+Most of these had info in one of the tissue columns, but sometimes I had to go back to run selector and dig a bit deeper. 
+
+* DRP001150: cell mixture - tissue sample (yikes): no fix, will get dropped
+* ERP001942: LCLs
+* ERP122083: more cancer: finalOrgan:cancer and finalTissue:cancer
+* ERP122103: single cancer sample: finalOrgan:cancer and finalTissue:cancer
+* ERP122256: soft tissue cancer: finalOrgan:cancer and finalTissue:cancer
+* SRP151215: LCLs
+* SRP154973: 'adjacent normal' to cancers, lung cell carcinoma: finalOrgan:lung, finalSystem:respiratory
+* SRP179998: brain sample that for some reason isn't matching well: finalOrgan:brain and finalSystem:nervous
+* SRP181079: BCR sequencing of B-cells; finalOrgan:blood and finalSystem:immune
+* SRP181649: single established cell line: no fix, will get dropped
+* SRP186687: established cancer cell lines: no fix, will get dropped
+* SRP343308: Intestinal biopsies from multiple tissues: finalOrgan:intestine and finalSystem:digestive
+* SRP344328: Intrahepatic cholangiocarcinoma: finalOrgan: liver and finalSystem:hepatic
+
+```{r tissues-merge-update-missing-2}
+# What are the NAs...? 464 Of them are the LCL study, so let's fix that, first of all:
+allSRAFinal[allSRAFinal$SRA.Study %in% c("ERP001942", "SRP151215", "SRP181079"),]$finalSystem <- "immune"
+allSRAFinal[allSRAFinal$SRA.Study %in% c("ERP001942", "SRP151215", "SRP181079"),]$finalOrgan <- "blood"
+
+allSRAFinal[allSRAFinal$SRA.Study %in% c("ERP122083", "ERP122103", "ERP122256"),]$finalSystem <- "cancer"
+allSRAFinal[allSRAFinal$SRA.Study %in% c("ERP122083", "ERP122103", "ERP122256"),]$finalOrgan <- "cancer"
+
+allSRAFinal[allSRAFinal$SRA.Study %in% "SRP344328",]$finalSystem <- "hepatic"
+allSRAFinal[allSRAFinal$SRA.Study %in% "SRP344328",]$finalOrgan <- "liver"
+
+allSRAFinal[allSRAFinal$SRA.Study %in% "SRP343308",]$finalSystem <- "digestive"
+allSRAFinal[allSRAFinal$SRA.Study %in% "SRP343308",]$finalOrgan <- "intestine"
+
+allSRAFinal[allSRAFinal$SRA.Study %in% "SRP179998",]$finalSystem <- "nervous"
+allSRAFinal[allSRAFinal$SRA.Study %in% "SRP179998",]$finalOrgan <- "brain"
+
+allSRAFinal[allSRAFinal$SRA.Study %in% "SRP154973",]$finalSystem <- "respiratory"
+allSRAFinal[allSRAFinal$SRA.Study %in% "SRP154973",]$finalOrgan <- "lung"
+
+noAssignment <- allSRAFinal[is.na(allSRAFinal$finalOrgan) & is.na(allSRAFinal$finalSystem),]
+table(noAssignment$SRA.Study)
+# by(noAssignment, noAssignment$SRA.Study, function(x) head(x))
+
+# Remove that mixed tissue one. 
+allSRAFinal <- allSRAFinal[!(allSRAFinal$SRA.Study %in% "DRP001150"),]
+
+rm(noAssignment)
+```
+
+Much better... so we've resolved the NAs, but not the tissue ambiguities, which I think might just have to stay as is. 
+
+Now we look at the rows with info encoded in the `Cell_line` column, in addition to our organ and tissue assignments. Lots of these are cell lines that have ancestry info, but are established/immortalised, which was not included in our initial search... but should it have been? A key culprit is SRP186687, which is almost 1000 cancer samples with sequencing. 
+
+The brutal approach is to simply remove the entire study, and then come back again. But it would be smarter to also whitelist some terms and not just remove the column, or remove any rows with info in the column. SRP347253 has some epic cell line names, for instance, and all the occurrences of LCL etc should be kept - but first gotta check they're not already covered in other columns!
+
+```{r tissues-merge-update-cell-line}
+table(!is.na(allSRAFinal$Cell_line))
+
+allCellLine <- allSRAFinal[!is.na(allSRAFinal$Cell_line),]
+sort(table(allCellLine$SRA.Study), decreasing=T)
+
+head(sort(table(allCellLine$Cell_line), decreasing=T), n =50) # Some of these are clear keepers, some of the are clear removal. But the question is which is which, and how do I make my life easier? Let's check the big ones first:
+
+# by(allCellLine, allCellLine$SRA.Study, function(x) sort(table(x$finalOrgan),  decreasing=T))
+# by(allCellLine, allCellLine$SRA.Study, function(x) sort(table(x$finalSystem),  decreasing=T))
+# by(allCellLine, allCellLine$SRA.Study, function(x) sort(table(x$Cell_line),  decreasing=T))
+# by(allCellLine, allCellLine$SRA.Study, function(x) head(x[,columnsILike], n=20))
+rm(allCellLine)
+```
+Let's organise this a bit:
+
+### Studies to exclude:
+
+* SRP186687: the huge cancer study, currently assigned to various organs and lots of NA. exclude.
+* SRP217300: MIA PaCa, established breast cancer cell line. exclude.
+* SRP090531: mix of established cell lines and lines that closely match other cellosaurus IDs. exclude.
+* SRP103111: PC-3. established. exclude.
+* SRP075592: established. exclude.
+* SRP237644: established. exclude.
+* SRP408226: HepG2. exclude.
+* SRP292295: established cell line. exclude.
+* SRP191042: established. exclude.
+* SRP292536: established cancer cell lines. exclude.
+* SRP056109: established cancer cell line. exclude.
+* SRP269147: established cancer cell lines. exclude.
+* SRP178235: established. exclude.
+* SRP179498: established. exclude.
+* SRP193979: HepG2. exclude.
+* SRP259538: established cell line. exclude.
+* SRP334792: prostate cancer cell lines from ATCC. exclude.
+* SRP131505: established cancer cell lines. exclude.
+* SRP091668: established. exclude.
+* SRP041840: established. exclude.
+* SRP057446: HepG2 and related. exclude.
+* SRP060253: AGS. exclude.
+* SRP194087: established. exclude.
+* SRP220267: Caco2. exclude. 
+* SRP066625: HL-60/S4. exclude
+* SRP181649: Huh-7. exclude.
+* SRP298738: established AML cell line. exclude.
+* SRP074707: established. exclude.
+* SRP111915: established. exclude.
+* SRP164930: established. exclude. 
+
+### Studies to keep:
+
+These are mostly iPSCs and derivatives, so not too sure what to do with them:
+
+* SRP347253: the big iPSC panel, correctly assigned to iPSCs. ok
+* SRP132693: iPSC, iPSC derived cardiomyocytes and primary heart tissue. correctly labelled. ok. 
+* SRP154009: iPSC and iPSC derived cardiomyocytes. correctly labelled. ok
+* SRP323748: SRA accession says they're all iPSC derived cardiomyocytes from iPSCore, and this is recorded in the 'cell_subtype' column. need to update. Unsure.
+* SRP362734: colorectal cancer organoids... currently processed as if colorectal. need to update. unsure.
+* SRP125571: iPSC-derived cortical neurons (in `Sample_type`) from coriell fibroblasts. need to update. unsure. 
+* SRP223674: iPSC-derived motor neurons, incorrectly labelled as blood (starting material). need to update. unsure.
+* SRP330940: iPSCs and iPSC-derived material from publicly available line. unsure. 
+* SRP222944: iPSC-derived tissues, labelled as peripheral blood. need to update. unsure. 
+* SRP266877: WTC-11 iPSC cell line. need to update. unsure.
+* SRP155367: iPSC and iPSC derived material. SRA says from Coriell, but neither cellosaurus nor coriell have heard of this. unsure.
+* SRP070663: Coriell cell lines and iPSCs from them, correctly assigned. unsure.
+
+# These are easy to justify keeping:
+
+* ERP114122: LCLs, (from 1000 Genomes). ok
+* SRP344545: LCLs, (from 1000 Genomes). ok
+* SRP106527: CEU LCL sequencing. ok
+* SRP151215: LCLs. ok. 
+* SRP174206: primary samples, contain solid info in tissue column (tho I'm still sus but...). ok. 
+* SRP221374: blood cells. ok. 
+* SRP073347: PBMCs. ok.
+* SRP367525: primary vaginal samples. ok.
+* SRP352928: PBMCs. ok.
+* SRP198410: PBMCs. ok. 
+* SRP219483: primary cell lines. ok.
+* SRP220383: primary cell lines. ok.
+* SRP052896: primary samples. ok.
+
+So that's a quick summary. Let's clean this up and then check out what happens with all of those disagreements from before; this has also identified a few that need to be updated:
+
+```{r tissues-merge-update-cell-line-2}
+# First we make a list of a lot of studies to exclude:
+establishedStudies <- c("SRP164930", "SRP111915", "SRP074707", "SRP298738", "SRP181649", "SRP066625", "SRP220267", "SRP194087", "SRP060253", "SRP057446", "SRP041840", "SRP091668", "SRP131505", "SRP334792", "SRP259538", "SRP193979", "SRP179498", "SRP178235", "SRP269147", "SRP056109", "SRP292536", "SRP191042", "SRP292295", "SRP408226", "SRP237644", "SRP075592", "SRP103111", "SRP090531", "SRP217300", "SRP186687")
+
+allSRAFinal <- allSRAFinal[!(allSRAFinal$SRA.Study %in% establishedStudies),]
+dim(allSRAFinal) # Looks better
+
+# Then we gotta make sure all the other tissue assignments are ok:
+allCellLine <- allSRAFinal[allSRAFinal$SRA.Study %in% allSRAFinal[!is.na(allSRAFinal$Cell_line),]$SRA.Study,] # Yes again
+by(allCellLine, allCellLine$SRA.Study, function(x) sort(table(x$finalOrgan),  decreasing=T))
+
+# Some more updates...
+allSRAFinal[allSRAFinal$SRA.Study %in% c("SRP362734", "SRP323748", "SRP266877", "SRP223674", "SRP222944", "SRP125571"),]$finalSystem <- NA
+allSRAFinal[allSRAFinal$SRA.Study %in% c("SRP362734", "SRP323748", "SRP266877", "SRP223674", "SRP222944", "SRP125571"),]$finalOrgan <- "iPSC"
+
+# I guess we could make all the plots again... but easier to just tally disagreements?
+table(allSRAFinal$finalSystem, allSRAFinal$Cell_typeSystem) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("System annotation") +
+    xlab("Cell_type") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+table(allSRAFinal$finalSystem, allSRAFinal$source_nameSystem) %>% melt (.) %>%
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("System annotation") +
+    xlab("source_name") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# And now same for organs:
+table(allSRAFinal$finalOrgan, allSRAFinal$Cell_typeOrgan) %>% melt (.) %>% 
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Organ annotation") +
+    xlab("Cell_type") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+table(allSRAFinal$finalOrgan, allSRAFinal$source_nameOrgan) %>% melt (.) %>% 
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Organ annotation") +
+    xlab("source_name") +
+    ylab("Final") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# And the final table... this should be messy, but there should be some sanity to it.
+table(allSRAFinal$finalOrgan, allSRAFinal$finalSystem) %>% melt(.) %>% 
+  ggplot(., aes(Var.2, Var.1)) +
+    geom_tile(aes(fill = log2(value)), colour = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    ggtitle("Master annotation") +
+    xlab("System") +
+    ylab("Organ") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+I think it all looks mostly good now, with the open question of what to do with those where there's a mismatch between annotation derived from either `Cell_type` or `source_name`  and the other columns. It's not going to make a big difference, I guess, so I think we're ready to move on to real analyses... let's just look at things again tho:
+
+```{r tissues-recheck-mismatches}
+dim(allSRAFinal)
+cellOrganMismatches <- seeMismatches("finalOrgan", "Cell_typeOrgan")
+cellSystemMismatches <- seeMismatches("finalSystem", "Cell_typeSystem")
+sourceOrganMismatches <- seeMismatches("finalOrgan", "source_nameOrgan")
+sourceSystemMismatches <- seeMismatches("finalSystem", "source_nameSystem")
+
+table(cellOrganMismatches$finalOrgan, cellOrganMismatches$Cell_typeOrgan)
+table(cellSystemMismatches$finalSystem, cellSystemMismatches$Cell_typeSystem)
+table(sourceOrganMismatches$finalOrgan, sourceOrganMismatches$source_nameOrgan)
+table(sourceSystemMismatches$finalSystem, sourceSystemMismatches$source_nameSystem)
+
+table(cellOrganMismatches$SRA.Study)
+table(cellSystemMismatches$SRA.Study)
+table(sourceOrganMismatches$SRA.Study)
+table(sourceSystemMismatches$SRA.Study)
+
+# Yep, not too fussed. So now we can remove some of the temp columns and write this out
+allSRAFinal <- allSRAFinal[,-(37:46)]
+saveRDS(allSRAFinal, "allSRAFinalTissues.rds")
+```
+
+And we're done!
+

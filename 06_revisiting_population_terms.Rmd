@@ -1,0 +1,608 @@
+---
+title: "Diversity project revisiting population descriptors"
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+This started out as an analysis script, but there was still some ambiguity left in how the population descriptors were coded, so we're going to revisit it! Yay :(
+
+```{r setup}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(viridis)
+options(device = "quartz")
+
+allSRAFinal <- readRDS("allSRAFinalTissuesCentersDisease.rds")
+```
+
+Let's look at the data using the previous population descriptors and country terms.
+
+1. Who is sequencing who??
+
+## Where is the sequencing happening?
+
+```{r plot-clean-country, out.width="100%"}
+allSRAFinal <- allSRAFinal %>% 
+    mutate(finalRace = gsub("or ", "or\n", finalRace)) %>%
+    mutate(finalGeography = gsub("and ", "and\n", finalGeography)) %>%
+    as.data.frame()
+
+geographyClean <- allSRAFinal %>% drop_na(finalGeography)
+raceClean <- allSRAFinal %>% drop_na(finalRace)
+
+ggplot(geographyClean, aes(x = finalCountry, fill = finalGeography)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
+  theme_bw() +
+  ggtitle("Geography across all studies") +
+  xlab("SRA Depositor location") +
+  ylab("Samples (log10)") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
+
+ggplot(raceClean, aes(x = finalCountry, fill=finalRace)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
+  theme_bw() +
+  ggtitle("Race across all studies") +
+  xlab("SRA Depositor location") +
+  ylab("Samples (log10)") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
+```
+
+More clearly, who is sequencing each pop descriptor?
+
+```{r plot-clean-country-2, out.width="100%"}
+ggplot(geographyClean, aes(fill = finalCountry, x = finalGeography)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
+  theme_bw() +
+  ggtitle("Country of sequencing across descriptors") +
+  xlab("Geographic descriptor") +
+  ylab("Samples (log10)") +
+  scale_y_continuous(trans='log10') +
+  # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
+
+ggplot(raceClean, aes(fill = finalCountry, x = finalRace)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), alpha=0.8) +
+  theme_bw() +
+  ggtitle("Country of sequencing across descriptors") +
+  xlab("SRA Depositor location") +
+  ylab("Samples (log10)") +
+  scale_y_continuous(trans='log10') +
+  # scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="bottom")
+
+```
+
+## 2.5: Resolving ambiguity in the population descriptors:
+
+So... after looking at this, it's clear there's still some noise in the descriptor classifications, primarily with who we are labeling as 'white' vs European... It's worth looking at some of these studies more closely. For instance, we know Singapore and Brazil both use the term 'white' but it's very unlikely to be referring to US census categories, and instead reflects their own legal recognition. 
+
+First, it's worth remembering how the labels are made: 
+`finalGeography` is made by looking at data in columns `ETHNICITY`, `DONOR_ETHNICITY`, `ancestry` and `Population`, whereas `finalRace` is made from `RACE`, `primary_race`, `reported_race`, `race.ethnicity` and `donor_race`. There's a lot of downstream clean-up involved, which is perhaps a problem. 
+
+There are a couple of options here:
+
+1. **Be very strict**: if the column says race, then it's a race, if the column says ethnicity, then I don't care what your term is, it's a geographic origin. This will overcorrect, but should perhaps have been our starting position, to see how things improve with other choices. It should also resolve the problem of studies being split across descriptor categories.
+2. **Be somewhat strict**: We had previously decided that certain terms (Caucasian, white, African, black) were racial no matter the column label, which is perhaps a problem, so here I have left some terms that are not ambiguous but are clearly in the wrong column unchanged (eg African American or Native Hawaiian is racial, but black is not because it is used outside the USA without reference to the USA context). This will bungle some stuff and I suspect the moving of caucasian and white and black terms will make things way worse when we consider descriptor use within a study. 
+3. **Manual review** Leave things as they were with the original reclassification that we used, which does make some assumptions - caucasian is always racial, and white gets moved around a bit. 
+
+Let's go in order:
+
+### Option 1: The original category label trumps all:
+
+This method is worth exploring, to see how things look if we are strict (worth reporting in a supplement). All of the code used here and below is borrowed from `02_clean_ancestry_terms.Rmd` but without most of the intermediate qc because this is meant to be brutal and automatic.
+
+This is coded as `IGR.term.strictest`
+
+```{r strictest-terms}
+popDescriptors <- read.csv("20240702_descriptor_terms_new_schema.csv")
+
+allSRAFinal$mergedGeography <- coalesce(allSRAFinal$ancestry, allSRAFinal$Population) %>%
+  coalesce(., allSRAFinal$ETHNICITY) 
+
+allSRAFinal$mergedRace <- coalesce(allSRAFinal$RACE, allSRAFinal$race.ethnicity) %>%
+  coalesce(., allSRAFinal$DONOR_ETHNICITY) %>%
+  coalesce(., allSRAFinal$reported_race) %>%
+  coalesce(., allSRAFinal$primary_race) 
+
+popGeoNew <- popDescriptors[popDescriptors$IGR.coding.strictest %in% "geography",]
+popRaceNew <- popDescriptors[popDescriptors$IGR.coding.strictest %in% "race",]
+
+# And now we replace those labels with the ones in the schema:
+allSRAFinal$strictestGeography <- popGeoNew[match(allSRAFinal$mergedGeography, popGeoNew$Term),]$IGR.term.strictest
+allSRAFinal$strictestRace <- popRaceNew[match(allSRAFinal$mergedRace, popRaceNew$Term),]$IGR.term.strictest
+
+# At this point I originally did a lot of swapping of terms back and forth, but I believe in the strictest case we shouldn't do too much of that, just make sure there's nothing with a double assignment:
+# table(allSRAFinal$strictestGeography)
+# table(allSRAFinal$strictestRace)
+# 
+# table(!is.na(allSRAFinal$strictestGeography), !is.na(allSRAFinal$mergedGeography))
+# table(!is.na(allSRAFinal$strictestRace), !is.na(allSRAFinal$mergedRace))
+
+# We can quickly check what becomes what, with v2 being the original and v1 being the new one:
+geographyTerms <- as.data.frame(table(allSRAFinal$strictestGeography, allSRAFinal$mergedGeography)) %>% .[.$Freq > 0,]
+raceTerms <- as.data.frame(table(allSRAFinal$strictestRace, allSRAFinal$mergedRace)) %>% .[.$Freq > 0,]
+# geographyTerms
+# raceTerms
+
+# There's a few studies with joint assignments...
+table(!is.na(allSRAFinal$strictestGeography), !is.na(allSRAFinal$strictestRace)) 
+jointTerms <- as.data.frame(table(allSRAFinal$strictestRace, allSRAFinal$strictestGeography)) %>% .[.$Freq > 0,]
+jointTerms
+
+mismatches <- allSRAFinal[!is.na(allSRAFinal$strictestGeography) & !is.na(allSRAFinal$strictestRace),] 
+table(mismatches$SRA.Study) # Quite a lot of studies... where are they from?
+mismatches %>% count(finalCountry, SRA.Study, strictestGeography, strictestRace)
+
+# So in the strictest case, I am making the call that if the study contained both valid labels and is outside the USA, it goes to geography, if it's inside the USA it goes to race. 
+
+geoSRA <- unique(mismatches[!mismatches$finalCountry %in% "USA",]$SRA.Study)
+raceSRA <- unique(mismatches[mismatches$finalCountry %in% "USA",]$SRA.Study)
+
+allSRAFinal[allSRAFinal$SRA.Study %in% geoSRA,]$strictestRace <- NA
+allSRAFinal[allSRAFinal$SRA.Study %in% raceSRA,]$strictestGeography <- NA
+table(!is.na(allSRAFinal$strictestGeography), !is.na(allSRAFinal$strictestRace)) # Done... ish
+
+# Once we decide what to do with the hispanics, it should resolve this problem:
+allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(finalRace)
+allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(finalGeography)
+allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(hispanic)
+```
+
+### Option 2: THe original category label trumps most things
+
+Only if it *really* matches the US Census term in the geography columns, or if it really doesn't match the census terms in the race columns, are things switched over.
+
+This is coded as `IGR.term.strict`
+
+```{r strict-terms}
+popGeoNew <- popDescriptors[popDescriptors$IGR.coding.strict %in% "geography",]
+popRaceNew <- popDescriptors[popDescriptors$IGR.coding.strict %in% "race",]
+
+allSRAFinal$strictGeography <- popGeoNew[match(allSRAFinal$mergedGeography, popGeoNew$Term),]$IGR.term.strict
+allSRAFinal$strictRace <- popRaceNew[match(allSRAFinal$mergedRace, popRaceNew$Term),]$IGR.term.strict
+
+table(allSRAFinal$strictGeography)
+table(allSRAFinal$strictRace)
+
+# table(!is.na(allSRAFinal$strictGeography), !is.na(allSRAFinal$mergedGeography))
+# table(!is.na(allSRAFinal$strictRace), !is.na(allSRAFinal$mergedRace))
+```
+
+Now we have two problems - terms in the wrong column, and also double labels. Let's start with things that had race/geography info in the relevant columns before the recode, but weren't parsed correctly, ie we decided it was racial when it was coded as ethnicity or viceversa. 
+
+```{r strict-terms-2}
+# We start with race
+allSRAFinal$raceFails <- (!is.na(allSRAFinal$mergedRace) & is.na(allSRAFinal$strictRace)) 
+allSRAFinal$geographyFails <- (!is.na(allSRAFinal$mergedGeography) & is.na(allSRAFinal$strictGeography)) 
+
+raceOK <-  allSRAFinal[allSRAFinal$raceFails == FALSE,] #These got classified correctly, we think.
+raceOK$rescueGeography <- raceOK$strictGeography
+raceFails <- allSRAFinal[allSRAFinal$raceFails == TRUE,] 
+raceFails$rescueGeography <- popGeoNew[match(raceFails$mergedRace, popGeoNew$Term),]$IGR.term.strict
+allSRATemp <- rbind(raceOK, raceFails) 
+
+# Now we do the same to the mismatches in the geography term:
+geographyOK <-  allSRATemp[allSRATemp$geographyFails == FALSE,]
+geographyOK$rescueRace <- geographyOK$strictRace
+geographyFails <- allSRATemp[allSRATemp$geographyFails == TRUE,] 
+geographyFails$rescueRace <- popRaceNew[match(geographyFails$mergedGeography, popRaceNew$Term),]$IGR.term.strict
+allSRATemp <- rbind(geographyOK, geographyFails)
+
+# allSRATemp %>% count(strictRace, rescueRace)
+# allSRATemp %>% count(strictGeography, rescueGeography)
+
+allSRATemp$strictRace <- coalesce(allSRATemp$strictRace, allSRATemp$rescueRace) 
+
+# table(allSRATemp$finalRace)
+# table(allSRATemp$strictRace) 
+# 
+# table(allSRATemp$finalGeography)
+# table(allSRATemp$strictGeography) 
+
+allSRAFinal <- allSRATemp
+(rm(list=c("allSRATemp", "raceOK", "raceFails", "geographyOK", "geographyFails")))
+
+#And now we deal with things with both kinds of info:
+table(!is.na(allSRAFinal$strictGeography), !is.na(allSRAFinal$strictRace)) 
+jointTerms <- as.data.frame(table(allSRAFinal$strictRace, allSRAFinal$strictGeography)) %>% .[.$Freq > 0,]
+jointTerms
+
+mismatches <- allSRAFinal[!is.na(allSRAFinal$strictGeography) & !is.na(allSRAFinal$strictRace),] 
+table(mismatches$SRA.Study) # Quite a lot of studies... where are they from?
+mismatches %>% count(finalCountry, SRA.Study, strictGeography, strictRace)
+
+# In this case we should be more nuanced, rather than simply shoving things one way or another on the basis of depositing country (although I am tempted):
+# by(mismatches, mismatches$SRA.Study, function(x) head(x, n=10)) 
+```
+
+Some familiar names in here that I've had to decide on before, and new entries:
+
+* SRP068551 <- reported Ethnicity (Han Chinese) and Race (Asian), set to geography: East Asia only
+* SRP068551 <- reported Ethnicity and Race both as "White or Caucasian", because they hate me. USA, so we're going with Race: White (new)
+* SRP107326 <- reported Ethnicity (Taiwanese) and Race (Mongoloid), set to geography: East Asia only
+* SRP122876 <- reported race (Caucasian) and Population (Danish), set to geography: Europe only
+* SRP150833 <- reported ethnicity (Caucasoid) and Race (White), Russian study, set to geography: Europe (new)
+* SRP159625 <- reported ethnicity (English) and Race (Black), but reported race more often than ethnicity. Study was carried out at NIH in Bethesda, set to race: Black or African American only. No idea where 'English' came from. 
+* SRP179998 <- reported race (various) and ethnicity (Brazilian), Brazil recognises the concept of races legally but they are not aligned with USA ones, set to geography: Americas only
+* SRP241159 <- reported race and ethnicity both as "Caucasian". USA Study, so Race: White (new)
+* SRP292867 <- reported ethnicity (Korean/German) and race (Asian/White), set to geography only
+* SRP301528 <- reported Ethnicity (Caucasian) and race (White), Spanish study. Set to geography: Europe (new)
+* SRP362734 <- reported ethnicity (Asian) and race (Asian), data generated in China, set to geography: Asia
+
+```{r strict-terms-3, eval=T}
+allSRAFinal[allSRAFinal$SRA.Study %in% c("SRP068551", "SRP107326", "SRP122876", "SRP150833", "SRP292867", "SRP179998", "SRP362734", "SRP301528"),]$strictRace <- NA
+allSRAFinal[allSRAFinal$SRA.Study %in% c("SRP068551", "SRP159625", "SRP241159"),]$strictGeography <- NA
+```
+
+### Option 3: Intensive curation:
+
+Not repeating this, since it's what we did to begin with. Captured in the columns `finalRace` and `finalGeography`
+
+Now we compare all three approaches. 
+
+1. **How are samples parsed across the three levels of description? **
+2. **How are terms parsed across depositing country?**
+3. **How many studies end up split between race and geography? **
+
+We begin with the easy one:
+
+## 1. How are samples parsed across the three levels of description? 
+
+Reminder that *final* is the most artisanal, *strict* is a bit more conservative and *strictest* does not move terms across columns even when these are patently in the wrong place. 
+
+```{r term-comparisons-1, out.width="100%"}
+# Let's clean up the terms again
+allSRAFinal <- allSRAFinal %>% 
+    mutate(strictRace = gsub("or ", "or\n", strictRace)) %>%
+    mutate(strictestRace = gsub("or ", "or\n", strictestRace)) %>%
+    mutate(strictRace = gsub("and ", "and\n", strictRace)) %>%
+    mutate(strictestRace = gsub("and ", "and\n", strictestRace)) %>%
+    mutate(strictGeography = gsub("and ", "and\n", strictGeography)) %>%
+    mutate(strictestGeography = gsub("and ", "and\n", strictestGeography)) %>%
+    as.data.frame()
+
+# And let's remove the intermediate columns because they're annoying:
+allSRAFinal <- allSRAFinal[,c(1:41,44:47)]
+
+# Some big changes in White/European and Black/Subsaharan Africa if we are very strict with terms...
+allSRAFinal %>% count(finalGeography, strictGeography, strictestGeography)
+allSRAFinal %>% count(finalRace, strictRace, strictestRace)
+
+# Repeat the same plots as above:
+sampleGeography <- allSRAFinal %>% count(SRA.Study, finalGeography, strictGeography, strictestGeography) 
+meltSampleGeography <- melt(sampleGeography)
+
+# First, by the original classification: finalGeography
+meltSampleGeography %>% drop_na(finalGeography) %>% 
+ggplot(., aes(x = finalGeography, y=value, fill=finalGeography)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("finalGeography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+meltSampleGeography %>% drop_na(strictGeography) %>% 
+ggplot(., aes(x = strictGeography, y=value, fill=strictGeography)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("strictGeography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+meltSampleGeography %>% drop_na(strictestGeography) %>% 
+ggplot(., aes(x = strictestGeography, y=value, fill=strictestGeography)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("strictestGeography across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+# And now the same for race:
+sampleRace <- allSRAFinal %>% count(SRA.Study, finalRace, strictRace, strictestRace) 
+meltSampleRace <- melt(sampleRace)
+
+# First, by the original classification: finalRace
+meltSampleRace %>% drop_na(finalRace) %>% 
+ggplot(., aes(x = finalRace, y=value, fill=finalRace)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("finalRace across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+meltSampleRace %>% drop_na(strictRace) %>% 
+ggplot(., aes(x = strictRace, y=value, fill=strictRace)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("strictRace across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+meltSampleRace %>% drop_na(strictestRace) %>% 
+ggplot(., aes(x = strictestRace, y=value, fill=strictestRace)) +
+  geom_bar(stat="identity", alpha=0.6) +
+  theme_bw() +
+  ggtitle("strictestRace across all studies") +
+  # xlab("System") +
+  ylab("Count") +
+  # scale_y_continuous(trans='log10') +
+  scale_fill_viridis(discrete=T, na.value="grey50") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+```
+
+
+## 2: How does term assignment look by country across methods??
+### Geography:
+```{r country-of-sequencing-1, out.width="100%"}
+allSRAFinal %>% group_by(finalCountry, finalGeography) %>% summarise(n = sum(!is.na(finalGeography))) %>% drop_na(finalGeography) %>%
+  ggplot(aes(x = finalCountry, y = n, fill=finalGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("finalGeography across all studies") +
+    xlab("SRA Depositor location") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictGeography) %>% summarise(n = sum(!is.na(strictGeography))) %>% drop_na(strictGeography) %>%
+  ggplot(aes(x = finalCountry, y = n, fill=strictGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictGeography across all studies") +
+    xlab("SRA Depositor location") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictestGeography) %>% summarise(n = sum(!is.na(strictestGeography))) %>% drop_na(strictestGeography) %>%
+  ggplot(aes(x = finalCountry, y = n, fill=strictestGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictestGeography across all studies") +
+    xlab("SRA Depositor location") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+```
+
+### Race:
+
+```{r country-of-sequencing-2, out.width="100%"}
+
+allSRAFinal %>% group_by(finalCountry, finalRace) %>% summarise(n = sum(!is.na(finalRace))) %>% drop_na(finalRace) %>%
+  ggplot(aes(x = finalCountry, y = n, fill=finalRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("finalRace across all studies") +
+    xlab("SRA Depositor location") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictRace) %>% summarise(n = sum(!is.na(strictRace))) %>% drop_na(strictRace) %>%
+  ggplot(aes(x = finalCountry, y = n, fill=strictRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictRace across all studies") +
+    xlab("SRA Depositor location") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictestRace) %>% summarise(n = sum(!is.na(strictestRace))) %>% drop_na(strictestRace) %>%
+  ggplot(aes(x = finalCountry, y = n, fill=strictestRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictestRace across all studies") +
+    xlab("SRA Depositor location") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+```
+
+Now we flip the axes and the groupings:
+```{r country-of-sequencing-3, out.width="100%"}
+allSRAFinal %>% group_by(finalCountry, finalGeography) %>% summarise(n = sum(!is.na(finalGeography))) %>% drop_na(finalGeography) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=finalGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("finalGeography across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictGeography) %>% summarise(n = sum(!is.na(strictGeography))) %>% drop_na(strictGeography) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=strictGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictGeography across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictestGeography) %>% summarise(n = sum(!is.na(strictestGeography))) %>% drop_na(strictestGeography) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=strictestGeography)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictestGeography across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50", option="plasma") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+```
+
+### Race:
+
+```{r country-of-sequencing-4, out.width="100%"}
+
+allSRAFinal %>% group_by(finalCountry, finalRace) %>% summarise(n = sum(!is.na(finalRace))) %>% drop_na(finalRace) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=finalRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("finalRace across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictRace) %>% summarise(n = sum(!is.na(strictRace))) %>% drop_na(strictRace) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=strictRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictRace across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+
+allSRAFinal %>% group_by(finalCountry, strictestRace) %>% summarise(n = sum(!is.na(strictestRace))) %>% drop_na(strictestRace) %>%
+  ggplot(aes(fill = finalCountry, y = n, x=strictestRace)) +
+    geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), stat="identity", alpha=0.8) +
+    theme_bw() +
+    ggtitle("strictestRace across all studies") +
+    xlab("Population descriptor") +
+    ylab("Samples (log10)") +
+    scale_y_continuous(trans='log10') +
+    # scale_fill_viridis(discrete=T, na.value="grey50") +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "bottom")
+```
+
+## 3: How many studies end up with terms in multiple categories?
+
+```{r}
+allSRAFinal %>% group_by(SRA.Study, finalGeography, finalRace) %>% 
+  summarise(n = n()) %>% 
+  group_by(SRA.Study) %>% 
+  summarise(nGeo = sum(n[!is.na(finalGeography)]), nRace = sum(n[!is.na(finalRace)])) %>% 
+  filter(if_all(contains("n"), ~ .x > 0)) %>%
+  as.data.frame() %>%
+  melt() %>%
+  ggplot(., aes(x = SRA.Study, y = value, fill=variable)) +
+    geom_bar(stat="identity") +
+    theme_bw() +
+    ggtitle("Studies with both finalRace and finalGeography assignments") +
+    ylab("Count") +
+    scale_fill_brewer(palette = "Set1") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    theme(legend.position="bottom")
+
+allSRAFinal %>% group_by(SRA.Study, strictGeography, strictRace) %>% 
+  summarise(n = n()) %>% 
+  group_by(SRA.Study) %>% 
+  summarise(nGeo = sum(n[!is.na(strictGeography)]), nRace = sum(n[!is.na(strictRace)])) %>% 
+  filter(if_all(contains("n"), ~ .x > 0)) %>%
+  as.data.frame() %>%
+  melt() %>%
+  ggplot(., aes(x = SRA.Study, y = value, fill=variable)) +
+    geom_bar(stat="identity") +
+    theme_bw() +
+    ggtitle("Studies with both strictRace and strictGeography assignments") +
+    ylab("Count") +
+    scale_fill_brewer(palette = "Set1") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    theme(legend.position="bottom")
+
+# Can't be plotted because there are none. 
+try(allSRAFinal %>% group_by(SRA.Study, strictestGeography, strictestRace) %>% 
+  summarise(n = n()) %>% 
+  group_by(SRA.Study) %>% 
+  summarise(nGeo = sum(n[!is.na(strictestGeography)]), nRace = sum(n[!is.na(strictestRace)])) %>% 
+  filter(if_all(contains("n"), ~ .x > 0)) %>%
+  as.data.frame() %>%
+  melt() %>%
+  ggplot(., aes(x = SRA.Study, y = value, fill=variable)) +
+    geom_bar(stat="identity") +
+    theme_bw() +
+    ggtitle("Studies with both strictestRace and strictestGeography assignments") +
+    ylab("Count") +
+    scale_fill_brewer(palette = "Set1") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    theme(legend.position="bottom"))
+
+```
+
+Stopping here for now - I am feeling like `strictest` is my favourite, actually. I had previously looked at how to resolve some of the conflicted studies (at the `final` level, there's some new ones in the `strict` level), but hadn't implemented it...
+
+But now we gotta deal with one final hurdle: hispanic:
+
+### Coding hispanics one last time:
+
+```{r hispanic-coding-1}
+# How many studies have hispanic info and race or ethnicity info?
+
+allSRAFinal %>% count(strictestRace, hispanic)
+allSRAFinal %>% count(strictestGeography, hispanic)
+allSRAFinal %>% count(hispanic, strictestRace)
+
+# Not sure if this is due to how we coded it, but that's pleasant. Except, what to do with the people with two labels??
+
+ saveRDS(allSRAFinal, file="20240901_allSRAFinal.rds")
+
+
+```
+
+

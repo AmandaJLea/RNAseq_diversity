@@ -1,0 +1,170 @@
+---
+title: "Diversity project new base file"
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+This was getting exhausting, so we're moving it to a repo now, so it can be properly versioned and edited and stuff, I got tired of all the duplicate files and the such. The lab notebook will simply contain notes...
+
+This is mostly Amanda's code, except that I noticed when trying to do tissue analyses that a lot of studies use the 'source_name' column to store tissue information, which is annoying but worth rescuing. Rather than trying to work out how to query the API programatically, which didn't work so well, I am going to use her code to recreate the big master file, and then run it through the clean up process again with a couple of extra columns, and go from there. 
+
+```{r setup}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/SRA_metadata/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(plyr)
+```
+
+### Combine data extraction batches - pre 2019
+
+```{r old-sra}
+files1 <- paste0("0", seq(1:9))
+files2 <- 10:15
+files <- c(files1,files2)
+
+sraPre <- read.csv('SRA_batches/SraRunTable_00.txt',header=T)
+
+for (i in 1:length(files)){
+  tmp_sub <- read.csv(paste('SRA_batches/SraRunTable_',files[i],'.txt',sep=''),header=T)
+  sraPre <- rbind.fill(sraPre,tmp_sub)
+  print(i)
+}
+
+dim(sraPre)
+oldTerms <- names(sraPre)
+
+missing <- as.data.frame(apply(sraPre,2,function(x) length(which(x=='' | is.na(x)))))
+missing$prop <- missing[,1]/dim(sraPre)[1]
+hist(missing$prop)
+write.table(as.data.frame((missing)),'missing_metadata_20240613.txt',quote=F,sep='\t')
+
+# Most things are missing from most samples, because only one or two studies will use that particular column descriptor, epic:
+nrow(missing)
+nrow(missing[missing$prop >= 0.9,])/nrow(missing) # 94% of columns have > 90% missingness
+head(missing[order(-missing$prop),])
+
+# What has no missingness/is mandatory?
+nrow(missing[missing$prop <= 0.05,])/nrow(missing) # 
+head(missing[order(missing$prop),], n = 50) # Man, we're even missing some biosamples...
+
+# Some obvious places to find info that we care about:
+names(sraPre)[grep("sample", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("source", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("tissue", names(sraPre), ignore.case=T)]
+
+names(sraPre)[grep("population", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("country", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("ancestry", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("race", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("ethnicity", names(sraPre), ignore.case=T)]
+
+# On the basis of that, I am picking some columns to keep after Amanda's originals:
+head(sort(table(sraPre[!is.na(sraPre$Sample_type),]$Sample_type), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$biosample_type),]$biosample_type), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$SAMPLE),]$SAMPLE), decreasing=T), n = 20)
+head(sort(table(sraPre[!is.na(sraPre$sample_title),]$sample_title), decreasing=T), n = 20)
+head(sort(table(sraPre[!is.na(sraPre$Sample_Group),]$Sample_Group), decreasing=T), n = 20)
+head(sort(table(sraPre[!is.na(sraPre$samplename),]$samplename), decreasing=T), n = 20)
+head(sort(table(sraPre[!is.na(sraPre$host_tissue_sampled),]$host_tissue_sampled), decreasing=T), n = 20)
+
+head(sort(table(sraPre[!is.na(sraPre$source_name),]$source_name), decreasing=T), n = 20) # Defs keep
+head(sort(table(sraPre[!is.na(sraPre$Source),]$Source), decreasing=T), n = 20)
+head(sort(table(sraPre[!is.na(sraPre$source_tissue),]$source_tissue), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$source_material_cell_type),]$source_material_cell_type), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$source_material),]$source_material), decreasing=T), n = 20) # keep
+head(sort(table(sraPre[!is.na(sraPre$Isolation_source),]$Isolation_source), decreasing=T), n = 20)
+
+head(sort(table(sraPre[!is.na(sraPre$tissue_source),]$tissue_source), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$tissue.cell_type_source),]$tissue.cell_type_source), decreasing=T), n = 20) # Keep
+
+head(sort(table(sraPre[!is.na(sraPre$Organism_part),]$Organism_part), decreasing=T), n = 20) # Keep
+
+head(sort(table(sraPre[!is.na(sraPre$Sampling_site),]$Sampling_site), decreasing=T), n = 20) # Reject
+
+sraPreOld <- sraPre[,c('SRA.Study','Center.Name','BioSample','Organism','LibrarySource','Cell_type','Tissue','Cell_line','disease','ETHNICITY','disease_state','Diagnosis','tissue_type','clinical_information','RACE','Site','health_state','Population','tissue_source','geo_loc_name_country','geo_loc_name_country_continent','DONOR_HEALTH_STATUS','DONOR_ETHNICITY','geo_loc_name','reported_race','source_tissue',"ReleaseDate","create_date","ancestry","donor_id", "Sample_type", "source_name", "source_material_cell_type", "source_material", "tissue.cell_type_source", "tissue_source", "Organism_part")]
+
+write.table(sraPreOld,'20240613_run_selector_metadata.txt',quote=F,row.names=F,sep='\t')
+```
+
+We cannot run everything in one go, so we split here like Amanda was doing, because otherwise we run out of RAM pretty quickly... But the process for combining is the same, and we do another round of checking for interesting columns
+
+```{r new-sra}
+newFiles<-seq(2:21)
+sraPre <- read.csv('SRA_post2019/SraRunTable_1.txt',header=T)
+
+for (i in 1:length(newFiles)){
+  tmp_sub <- read.csv(paste('SRA_post2019/SraRunTable_',newFiles[i],'.txt',sep=''),header=T)
+  sraPre <- rbind.fill(sraPre,tmp_sub)
+  print(i)
+}
+
+dim(sraPre)
+newTerms <- names(sraPre)
+
+#How many terms in total?
+length(unique(c(oldTerms, newTerms)))
+
+# Missingness checks don't work here (out of ram) so we move straight to looking at some column names and labels:
+names(sraPre)[grep("sample", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("source", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("tissue", names(sraPre), ignore.case=T)]
+
+# No changes here:
+names(sraPre)[grep("population", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("country", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("ancestry", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("race", names(sraPre), ignore.case=T)]
+names(sraPre)[grep("ethnicity", names(sraPre), ignore.case=T)]
+
+# On the basis of that, I am picking some columns to keep after Amanda's originals:
+head(sort(table(sraPre[!is.na(sraPre$sample_source),]$sample_source), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$Sample_material),]$Sample_material), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$sample.identity),]$sample.identity), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$sample_class),]$sample_class), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$Sample.Name),]$Sample.Name), decreasing=T), n = 50) # Keep
+head(sort(table(sraPre[!is.na(sraPre$SAMPLE_TYPE),]$SAMPLE_TYPE), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$sample_title),]$sample_title), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$sample_origin),]$sample_origin), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$biosample_type),]$biosample_type), decreasing=T), n = 20) # Reject
+
+
+head(sort(table(sraPre[!is.na(sraPre$source_name),]$source_name), decreasing=T), n = 20) # Defs keep
+head(sort(table(sraPre[!is.na(sraPre$library_source),]$library_source), decreasing=T), n = 20) # reject
+head(sort(table(sraPre[!is.na(sraPre$tissue_source),]$tissue_source), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$source_tissue),]$source_tissue), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$tissue.cell_type_source),]$tissue.cell_type_source), decreasing=T), n = 20) # Keep
+head(sort(table(sraPre[!is.na(sraPre$source_material_id),]$source_material_id), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$cell_line_source),]$cell_line_source), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$cell_line_background),]$cell_line_background), decreasing=T), n = 20) # Reject
+head(sort(table(sraPre[!is.na(sraPre$source_organ),]$source_organ), decreasing=T), n = 20) # Keep
+
+head(sort(table(sraPre[!is.na(sraPre$Sampling_site),]$Sampling_site), decreasing=T), n = 20) # Keep
+
+sraPreNew <- sraPre[,c('SRA.Study','Center.Name','BioSample','Organism','LibrarySource','Cell_type','Tissue','Cell_Line','disease','ETHNICITY','disease_state','Diagnosis','tissue_type','clinical_information','RACE','Site','health_state','Population','tissue_source','geo_loc_name_country','geo_loc_name_country_continent','geo_loc_name','reported_race','source_tissue',"ReleaseDate","create_date","ancestry","race.ethnicity","primary_race",'geographical_location',"donor_id", "source_name", "source_materal_id", "tissue_source", "SAMPLE_TYPE", "sample_origin", "tissue.cell_type_source", "source_organ", "Sampling_site", "Organism_part")]
+                       
+write.table(sraPreNew,'20240613_run_selector_metadata_post2019.txt',quote=F,row.names=F,sep='\t')
+```
+
+Anything after donor_id in either call is newly added right now, and the merger still works, although here it is more of a sanity check than anything else.  
+
+```{r merge-datasets}
+
+#########
+# combine ALL samples from pre and post 2019
+#########
+
+names(sraPreNew)[8] <- "Cell_line"
+
+allSRA <- rbind.fill(sraPreNew, sraPreOld)
+dim(allSRA)
+allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+dim(allSRA) # Yep that cleaned things up
+
+allSRAcounts <- as.data.frame(table(allSRA$SRA.Study))
+keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
+allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$Var1,]
+dim(allSRAFilt) # Most of them stick around...
+```
