@@ -1,0 +1,434 @@
+---
+html_document: default
+output:
+  html_document:
+    df_print: paged
+title: "Final figure 5"
+editor_options:
+  chunk_output_type: console
+---
+
+Whyyyyyy does it work when I run it on mine but not on hers. 
+
+```{r setup, include=FALSE} 
+# knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(tidyverse)
+library(RColorBrewer)
+library(data.table)
+library(ggpmisc)
+library(plyr)
+library(patchwork)
+library(thematic)
+library(scales)
+
+concatenate_non_na <- function(row) {
+  non_na_values <- na.omit(row)
+  if (length(non_na_values) == 0) {
+    return(NA)
+  } else {
+    return(paste(non_na_values, collapse = ""))
+  }
+}
+
+theme_set(theme_bw(base_size = 6))
+theme_update(axis.text=element_text(size=7))
+theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
+        legend.title = element_text(size=8), #change legend title font size
+        legend.text = element_text(size=6),
+        plot.title = element_text(size=8))
+# theme_update(plot.margin = unit(c(2, 2, 2, 2), "pt"))
+
+options(device = "quartz")
+```
+
+Read in SRA data - use Irene's filtering code
+```{r}
+old <- fread("SRA_metadata/8Sep23_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
+new <- fread("SRA_metadata/8Sep23_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
+
+names(new)[8] <- "Cell_line"
+
+allSRA <- rbind.fill(old, new)
+allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+
+allSRAcounts <- as.data.frame(table(allSRA$SRA.Study))
+keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
+allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$Var1,]
+
+allSRAClean <- allSRAFilt %>% distinct(BioSample, .keep_all=TRUE)
+
+data_sub3<-allSRAClean
+data_sub3$ReleaseDate2<-as.POSIXct(data_sub3$ReleaseDate)
+data_sub3$ReleaseYear<-format(data_sub3$ReleaseDate2, "%Y")
+
+```
+
+Read in dbGap data
+```{r}
+dbGap <- read.delim('21Jul24_parsed_dbGap.csv')
+dbGap2 <- subset(dbGap,total_samples>9) # I don't remove these on purpose, but all studies that pass my filters in 08_etc exceed this threshold. Still, not sure we should be removing them for plotting? Ah well. 
+```
+
+Read in cleaned up/recoded SRA data from Irene. Recoding follows: https://gitlab.svi.edu.au/igr-lab/rna-diversity/-/blob/main/07_second_analysis_pass.Rmd?ref_type=heads
+```{r}
+allSRAFinal<-readRDS('20240901_allSRAFinal_for_plotting.rds')
+
+allSRAFinal$strictestGeography <- factor(allSRAFinal$strictestGeography, levels = c("Sub-Saharan Africa", "North Africa and\nWestern Asia", "Europe", "South Asia", "Southeast Asia", "East Asia", "Asia (NOS)", "Oceania", "Americas", "Multiple", "Other"))
+
+scale_fill_geography <- function(...){
+    ggplot2:::manual_scale('fill',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
+    )
+}
+
+scale_color_geography <- function(...){
+    ggplot2:::manual_scale('color',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
+    )
+}
+
+raceColours <- brewer.pal(8,"Set2") #8 because we don't plot NAs
+
+scale_color_race <- function(...){
+    ggplot2:::manual_scale('color', 
+                           values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
+    )
+}
+
+scale_fill_race <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
+    )
+}
+
+```
+
+Prep for panel A - SRA samples over time
+```{r}
+byyear<-as.data.frame(aggregate(data_sub3$SRA.Study~data_sub3$ReleaseYear,FUN=function(x) length(unique(x))))
+names(byyear)<-c('year','studies')
+byyear$biosamples<-as.data.frame(aggregate(data_sub3$BioSample~data_sub3$ReleaseYear,FUN=function(x) length(unique(x))))[,2]
+
+tmp2<-subset(byyear,year<2023)
+tmp2$biosamples_csum <- ave(tmp2$biosamples, FUN=cumsum)
+tmp2$studies_csum <- ave(tmp2$studies, FUN=cumsum)
+tmp3<-tmp2
+
+```
+
+Prep for panel A - dbGap samples over time
+```{r}
+byyear<-as.data.frame(aggregate(dbGap2$accession~dbGap2$ReleaseYear,FUN=function(x) length(unique(x))))
+names(byyear)<-c('year','studies')
+byyear$samples<-as.data.frame(aggregate(dbGap2$total_samples~dbGap2$ReleaseYear,FUN=sum))[,2]
+
+tmp2<-subset(byyear,year<2024)
+tmp2$samples_csum <- ave(tmp2$samples, FUN=cumsum)
+tmp2$studies_csum <- ave(tmp2$studies, FUN=cumsum)
+
+names(tmp3)[3:4]<-c('samples','samples_csum')
+tmp3$dataset<-'SRA'
+tmp2$dataset<-'dbGap'
+both<-rbind(tmp3,tmp2)
+
+panelA <- ggplot(both, aes(x=as.numeric(year),y=samples_csum/1000,color=dataset)) +
+  geom_line( linewidth=1.5, aes(linetype=dataset)) +
+  # theme_bw(12)+
+  ylab('Cumulative samples\n(in thousands)')+
+  xlab('Year') +
+  scale_color_manual(values=c('darkgrey','black'))+
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
+
+
+```
+
+Panel B - SRA trends over time for race - needs equivalent geography panel, surely?
+
+```{r}
+terms<-allSRAFinal
+terms$ReleaseDate2<-as.POSIXct(terms$ReleaseDate)
+terms$ReleaseYear<-format(terms$ReleaseDate2, "%Y")
+terms<-unique(terms[,c('ReleaseYear','strictestRace','strictestGeography','SRA.Study','BioSample','hispanic','finalCountry')])
+
+tmp2<-as.data.frame(table(terms$ReleaseYear,terms$strictestRace))
+# ggplot(tmp2, aes(fill=Var2, y=Freq, x=Var1)) + geom_bar(position="fill", stat="identity")+theme_minimal() + scale_fill_brewer(palette='Paired')+xlab('Year')
+
+tmp3<- tmp2 %>%
+  pivot_wider(names_from = Var2, values_from = Freq)
+
+tmp3$AI_AN_cum <- ave(tmp3$`American Indian and\nAlaska Native`, FUN=cumsum)
+tmp3$Asian_cum <- ave(tmp3$Asian, FUN=cumsum)
+tmp3$Black_cum <- ave(tmp3$`Black or\nAfrican American`, FUN=cumsum)
+tmp3$NH_OPI_cum <- ave(tmp3$`Native Hawaiian and\nother Pacific Islander`, FUN=cumsum)
+tmp3$Multiple_cum <- ave(tmp3$Multiple, FUN=cumsum)
+tmp3$Hispanic_cum <- ave(tmp3$Hispanic, FUN=cumsum)
+tmp3$Other_cum <- ave(tmp3$Other, FUN=cumsum)
+# tmp3$White_cum <- ave(tmp3$White, FUN=cumsum)
+
+tmp3$prop_white<-tmp3$White/apply(tmp3[,c(2:9)],1,sum)
+
+panelBInner <- ggplot(tmp3,aes(x=2012:2022, y=1-prop_white)) + 
+  geom_point() + 
+  stat_smooth(method='lm',color='black') +
+  theme_bw(8) +
+  ylab('Proportion\nnon-white') +
+  xlab('Year') + 
+  ylim(0,0.8) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  stat_poly_eq(use_label(c("R2"))) +
+  scale_x_continuous(breaks=seq(2012,2022, by=2))
+
+panelBInner
+
+tmp4<-tmp3[,c(1,10:16)] %>%
+  pivot_longer(!Var1, names_to = "group", values_to = "cumulative")
+
+tmp4$group[which(tmp4$group == 'AI_AN_cum')]<-"American Indian and\nAlaska Native"
+tmp4$group[which(tmp4$group == 'Asian_cum')]<-"Asian"
+tmp4$group[which(tmp4$group == 'Black_cum')]<-"Black or\nAfrican American"
+tmp4$group[which(tmp4$group == 'NH_OPI_cum')]<-"Native Hawaiian and\nother Pacific Islander"
+tmp4$group[which(tmp4$group == 'Multiple_cum')]<-"Multiple"
+tmp4$group[which(tmp4$group == 'Hispanic_cum')]<-"Hispanic"
+tmp4$group[which(tmp4$group == 'Other_cum')]<-"Other"
+
+panelBOuter <- ggplot(tmp4, aes(x=as.numeric(Var1)+2011, y=cumulative, color=group)) +
+  geom_line(linewidth=1.2) +
+  geom_point(size = 3) +
+  labs(x = "Year", y = "Cumulative Samples") +
+  scale_color_race() +
+  scale_x_continuous(breaks=seq(2012,2022, by=2)) +
+  guides(color=guide_legend(title="", label.position="left")) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
+
+panelBOuter
+
+```
+
+Panel C - SRA trends over time for geography
+
+```{r}
+terms<-allSRAFinal
+terms$ReleaseDate2<-as.POSIXct(terms$ReleaseDate)
+terms$ReleaseYear<-format(terms$ReleaseDate2, "%Y")
+terms<-unique(terms[,c('ReleaseYear','strictestRace','strictestGeography','SRA.Study','BioSample','hispanic','finalCountry')])
+
+tmp2<-as.data.frame(table(terms$ReleaseYear,terms$strictestGeography))
+# ggplot(tmp2, aes(fill=Var2, y=Freq, x=Var1)) + geom_bar(position="fill", stat="identity")+theme_minimal() + scale_fill_brewer(palette='Paired')+xlab('Year')
+
+tmp3<- tmp2 %>%
+  pivot_wider(names_from = Var2, values_from = Freq)
+
+tmp3$SSAfr_cum <- ave(tmp3$`Sub-Saharan Africa`, FUN=cumsum)
+tmp3$NAWA_cum <- ave(tmp3$`North Africa and\nWestern Asia`, FUN=cumsum)
+tmp3$Europe_cum <- ave(tmp3$Europe, FUN=cumsum)
+tmp3$SAS_cum <- ave(tmp3$`South Asia`, FUN=cumsum)
+tmp3$SEA_cum <- ave(tmp3$`Southeast Asia`, FUN=cumsum)
+tmp3$EAS_cum <- ave(tmp3$`East Asia`, FUN=cumsum)
+tmp3$Asia_cum <- ave(tmp3$`Asia (NOS)`, FUN=cumsum)
+tmp3$Oceania_cum <- ave(tmp3$Oceania, FUN=cumsum)
+tmp3$Americas_cum <- ave(tmp3$`Americas`, FUN=cumsum)
+tmp3$Mult_cum <- ave(tmp3$Multiple, FUN=cumsum)
+tmp3$Other_cum <- ave(tmp3$Other, FUN=cumsum)
+
+tmp3$prop_euro<-tmp3$Europe/apply(tmp3[,c(2:12)],1,sum)
+
+panelCInner <- ggplot(tmp3,aes(x=2012:2022, y=1-prop_euro)) + 
+  geom_point() + 
+  stat_smooth(method='lm',color='black') +
+  theme_bw(8) +
+  ylab('Proportion\nnon-European') +
+  xlab('Year') + 
+  ylim(0,0.8) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  stat_poly_eq(use_label(c("R2"))) +
+  scale_x_continuous(breaks=seq(2012,2022, by=2))
+
+panelCInner
+
+tmp4<-tmp3[,c(1,13:23)] %>%
+  pivot_longer(!Var1, names_to = "group", values_to = "cumulative")
+
+tmp4$group[which(tmp4$group == 'SSAfr_cum')]<-"Sub-Saharan Africa"
+tmp4$group[which(tmp4$group == 'NAWA_cum')]<-"North Africa and\nWestern Asia"
+# tmp4$group[which(tmp4$group == 'Europe_cum')]<-"Europe"
+tmp4$group[which(tmp4$group == 'SAS_cum')]<-"South Asia"
+tmp4$group[which(tmp4$group == 'SEA_cum')]<-"Southeast Asia"
+tmp4$group[which(tmp4$group == 'EAS_cum')]<-"East Asia"
+tmp4$group[which(tmp4$group == 'Asia_cum')]<-"Asia (NOS)"
+tmp4$group[which(tmp4$group == 'Oceania_cum')]<-"Oceania"
+tmp4$group[which(tmp4$group == 'Americas_cum')]<-"Americas"
+tmp4$group[which(tmp4$group == 'Mult_cum')]<-"Multiple"
+tmp4$group[which(tmp4$group == 'Other_cum')]<-"Other"
+
+panelCOuter <- ggplot(tmp4, aes(x=as.numeric(Var1)+2011, y=cumulative, color=group)) +
+  geom_line(linewidth=1.2) +
+  geom_point(size = 3) +
+  labs(x = "Year", y = "Cumulative Samples") +
+  scale_color_geography() +
+  scale_x_continuous(breaks=seq(2012,2022, by=2)) +
+  guides(color=guide_legend(title="", label.position="left")) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
+
+panelCOuter
+
+```
+
+Panel D - dbGap - Trends over time 
+```{r}
+dbGap3<-dbGap2[,c(1:9,17,20)] %>%
+  pivot_longer(!accession & !ReleaseYear, names_to = "group", values_to = "count")
+
+tmp2<-as.data.frame(aggregate(dbGap3$count~dbGap3$ReleaseYear+dbGap3$group,FUN=sum))
+names(tmp2)<-c('Var1','Var2','Freq')
+
+tmp3<- tmp2 %>%
+  pivot_wider(names_from = Var2, values_from = Freq)
+
+# tmp3$Latin_American_cum <- ave(tmp3$`Hispanic or Latin American`, FUN=cumsum)
+tmp3$African_cum <- ave(tmp3$African, FUN=cumsum)
+tmp3$African_American_cum <- ave(tmp3$African_American, FUN=cumsum)
+tmp3$E_Asian_cum <- ave(tmp3$East.Asian, FUN=cumsum)
+tmp3$European_cum <- ave(tmp3$European, FUN=cumsum)
+tmp3$HispanicA_cum <- ave(tmp3$HispanicA, FUN=cumsum)
+tmp3$HispanicB_cum <- ave(tmp3$HispanicB, FUN=cumsum)
+tmp3$Other_cum <- ave(tmp3$Other, FUN=cumsum)
+tmp3$OA_PI_cum <- ave(tmp3$`Other_Asian_or_Pacific_Islander`, FUN=cumsum)
+tmp3$S_Asian_cum <- ave(tmp3$South_Asian, FUN=cumsum)
+
+tmp3$prop_euro<-tmp3$European/apply(tmp3[,c(2:10)],1,sum)
+tmp3[is.na(tmp3$prop_euro),]$prop_euro <- NA
+
+panelDInner <- tmp3 %>% filter(tmp3$Var1 > 2011 & tmp3$Var1 < 2023) %>% 
+  ggplot(.,aes(x=Var1, y=1-prop_euro)) + 
+  geom_point() + 
+  stat_smooth(method='lm',color='black') +
+  theme_bw(8) +
+  ylab('Proportion\nnon-European') +
+  xlab('Year') + 
+  ylim(0,0.8) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  stat_poly_eq(use_label(c("R2"))) +
+  scale_x_continuous(breaks=seq(2012,2022, by=2))
+
+panelDInner
+
+tmp4<-tmp3[,c(1,11:19)] %>%
+  pivot_longer(!Var1, names_to = "group", values_to = "cumulative")
+
+tmp4$group[which(tmp4$group == 'HispanicB_cum')]<-"HispanicB"
+tmp4$group[which(tmp4$group == 'HispanicA_cum')]<-"HispanicA"
+tmp4$group[which(tmp4$group == 'OA_PI_cum')]<-"Other Asian or\nPacific Islander"
+tmp4$group[which(tmp4$group == 'E_Asian_cum')]<-"East Asian"
+tmp4$group[which(tmp4$group == 'S_Asian_cum')]<-"South Asian"
+tmp4$group[which(tmp4$group == 'European_cum')]<-"European"
+tmp4$group[which(tmp4$group == 'African_American_cum')]<-"African American"
+tmp4$group[which(tmp4$group == 'African_cum')]<-"African"
+tmp4$group[which(tmp4$group == 'Other_cum')]<-"Other"
+
+tmp4$variable <- factor(tmp4$group, levels = c("African", "African American", "European", "South Asian", "East Asian", "Other Asian or\nPacific Islander", "HispanicA", "HispanicB", "Other"))
+
+dbGapColours <- brewer.pal(9,"Set3")
+
+tmp5<-subset(tmp4,group!='European')
+
+panelDOuter <- tmp5 %>% filter(tmp5$Var1 > 2011 & tmp5$Var1 < 2023) %>% 
+  ggplot(., aes(x=Var1, y=cumulative, color=variable)) +
+  geom_line(linewidth=1.2)+
+  geom_point(size=3)+
+  labs(x = "Year", y = "Cumulative Samples") +
+  scale_color_manual(values=dbGapColours)+
+  scale_x_continuous(breaks=seq(2012,2022, by=2)) +
+  guides(color=guide_legend(title="", label.position="left")) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
+
+panelDOuter
+```
+
+Panel E - SRA and dbGap - Compare to GWAS diversity monitor
+
+```{r}
+# GWAS options = European, Hispanic or Latin American, African American or Afro-Caribbean + African, Asian, Other or Mixed
+gwas=read.csv('gwasdiversitymonitor_bubble_22Apr24.csv')
+gwas$ReleaseYear<-format(as.POSIXct(gwas$DATE), "%Y")
+gwas$Broader[which(gwas$Broader=='African American or Afro-Caribbean')]<-'African'
+gwas$Broader[which(gwas$Broader=='Other/Mixed')]<-'Other or Mixed'
+gwas2<-as.data.frame(aggregate(gwas$N~gwas$ReleaseYear+gwas$Broader,FUN=sum))
+names(gwas2)<-c('Var1','Var2','Freq')
+gwas2$info<-'GWAS'
+
+# Match SRA Geography to GWAS options
+terms$GWAS_term<-as.character(terms$strictestGeography)
+terms$GWAS_term[which(terms$GWAS_term %in% c('Europe'))]<-'European'
+terms$GWAS_term[which(terms$GWAS_term %in% c('Americas') )]<-'Hispanic or Latin American'
+terms$GWAS_term[which(terms$GWAS_term=='Sub-Saharan Africa')]<-'African'
+terms$GWAS_term[which(terms$GWAS_term %in% c('Asian','Southeast Asia','South Asia','East Asia','Asia','Asia (NOS)'))]<-'Asian'
+terms$GWAS_term[which(terms$GWAS_term %in% c('Multiple','Other','Oceania','North Africa and\nWestern Asia'))]<-'Other or Mixed'
+
+tmp1<-as.data.frame(table(terms$ReleaseYear,terms$GWAS_term))
+tmp1$info<-'SRA'
+
+# Match dbGap Geography to GWAS options
+dbGap3<-dbGap2[,c(1:9,17,20)] %>%
+  pivot_longer(!accession & !ReleaseYear, names_to = "group", values_to = "count")
+
+dbGap3$Var2<-dbGap3$group
+dbGap3$Var2[which(dbGap3$group %in% c('African_American'))]<-'African'
+dbGap3$Var2[which(dbGap3$group %in% c('East.Asian','Other_Asian_or_Pacific_Islander','South_Asian'))]<-'Asian'
+dbGap3$Var2[which(dbGap3$group %in% c('HispanicA','HispanicB'))]<-'Hispanic or Latin American'
+dbGap3$Var2[which(dbGap3$group %in% c('Other'))]<-'Other or Mixed'
+
+tmp2<-as.data.frame(aggregate(dbGap3$count~dbGap3$ReleaseYear+dbGap3$Var2,FUN=sum))
+names(tmp2)<-c('Var1','Var2','Freq')
+tmp2$info<-'dbGap'
+
+both<-rbind(gwas2,tmp1,tmp2)
+both<-subset(both, Var1<2024)
+
+both2<-as.data.frame(aggregate(both$Freq~both$Var2+both$info,FUN=sum))
+names(both2)<-c('Var1','Var2','Freq')
+both2$Var2_relevel<-factor(both2$Var2,levels = c("SRA", "dbGap", "GWAS"))
+
+both2$Var1 <- gsub("or ", "or\n", both2$Var1)
+
+panelE <- ggplot(both2, aes(fill=Var1, y=Freq, x=Var2_relevel)) + 
+  geom_bar(position="fill", stat="identity")+
+  # theme_bw(13)+
+  ggtitle("") +
+  ylab('Proportion of samples')+
+  xlab('')+
+  scale_fill_manual(values=c('#9C8DC3', '#04C3C8','#DB6968','#F8984E', '#FBC9C4' ))+
+  coord_flip()+ 
+  scale_y_continuous(breaks=c(0,0.5,1))+
+  guides(fill=guide_legend(title="", label.position="left", nrow=2)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
+
+```
+
+And finally... we build the plot... but there's some size issues, so how shall we do it?
+
+```{r plotting-all-the-things}
+# Assemble the insets
+panelBJoint <- panelBOuter + inset_element(panelBInner, left=0.01, bottom=0.35, top=0.98, right=0.7)
+panelCJoint <- panelCOuter + inset_element(panelCInner, left=0.01, bottom=0.35, top=0.98, right=0.7)
+panelDJoint <- panelDOuter + inset_element(panelDInner, left=0.01, bottom=0.35, top=0.98, right=0.7)
+
+(((panelA | panelE) / panelCJoint) | (panelDJoint / panelBJoint)) +
+  plot_annotation(tag_levels = 'A') &
+    theme(plot.tag = element_text(size = 10))
+
+ggsave("trends_over_time_all.pdf", width = 7, height = 7)
+ggsave("trends_over_time_all.png", width = 7, height = 7)
+
+((panelA / panelCJoint) | (panelDJoint / panelBJoint)) +
+  plot_annotation(tag_levels = 'A') &
+    theme(plot.tag = element_text(size = 10))
+
+ggsave("trends_over_time_all_alt.pdf", width = 7, height = 7)
+ggsave("trends_over_time_all_alt.png", width = 7, height = 7)
+
+
+```
+
