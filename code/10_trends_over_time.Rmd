@@ -178,7 +178,7 @@ panelBInner <- ggplot(tmp3,aes(x=2012:2022, y=1-prop_white)) +
   xlab('Year') + 
   ylim(0,0.8) +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  stat_poly_eq(use_label(c("R2"))) +
+  stat_poly_eq(use_label(c("R2", "p"))) +
   scale_x_continuous(breaks=seq(2012,2022, by=2))
 
 panelBInner
@@ -243,7 +243,7 @@ panelCInner <- ggplot(tmp3,aes(x=2012:2022, y=1-prop_euro)) +
   xlab('Year') + 
   ylim(0,0.8) +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  stat_poly_eq(use_label(c("R2"))) +
+  stat_poly_eq(use_label(c("R2", "p"))) +
   scale_x_continuous(breaks=seq(2012,2022, by=2))
 
 panelCInner
@@ -310,7 +310,7 @@ panelDInner <- tmp3 %>% filter(tmp3$Var1 > 2011 & tmp3$Var1 < 2023) %>%
   xlab('Year') + 
   ylim(0,0.8) +
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  stat_poly_eq(use_label(c("R2"))) +
+  stat_poly_eq(use_label(c("R2", "p"))) +
   scale_x_continuous(breaks=seq(2012,2022, by=2))
 
 panelDInner
@@ -422,13 +422,11 @@ panelDJoint <- panelDOuter + inset_element(panelDInner, left=0.01, bottom=0.35, 
 ggsave("trends_over_time_all.pdf", width = 7, height = 7)
 ggsave("trends_over_time_all.png", width = 7, height = 7)
 
-((panelA / panelCJoint) | (panelDJoint / panelBJoint)) +
+((panelE / panelCJoint) | (panelDJoint / panelBJoint)) +
   plot_annotation(tag_levels = 'A') &
     theme(plot.tag = element_text(size = 10))
 
 ggsave("trends_over_time_all_alt.pdf", width = 7, height = 7)
 ggsave("trends_over_time_all_alt.png", width = 7, height = 7)
-
-
 ```
 
