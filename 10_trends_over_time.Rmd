@@ -421,5 +421,12 @@ panelDJoint <- panelDOuter + inset_element(panelDInner, left=0.01, bottom=0.35, 
 
 ggsave("trends_over_time_all.pdf", width = 7, height = 7)
 ggsave("trends_over_time_all.png", width = 7, height = 7)
+
+((panelE / panelCJoint) | (panelDJoint / panelBJoint)) +
+  plot_annotation(tag_levels = 'A') &
+    theme(plot.tag = element_text(size = 10))
+
+ggsave("trends_over_time_all_alt.pdf", width = 7, height = 7)
+ggsave("trends_over_time_all_alt.png", width = 7, height = 7)
 ```
 
