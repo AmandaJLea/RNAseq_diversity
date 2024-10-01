@@ -1,0 +1,57 @@
+library(googlesheets4)
+library(dplyr)
+library(arsenal)
+
+#read each google sheet in seperately and assign dfs
+MelRecount3 <- read_sheet("https://docs.google.com/spreadsheets/d/19ItxzZYWCTl_ztvZljyuZOsAPezOWtrKhk1kL5lP29Q/edit?usp=sharing")
+VURecount3 <- read_sheet("https://docs.google.com/spreadsheets/d/1u55DwHYLljh_3LSSZ9pqOJq8faadqBCV4UZkz8VEVbs/edit?usp=sharing")
+
+#Combine two DFs
+CombinedRecount3 <- rbind(MelRecount3, VURecount3)
+as.data.frame(CombinedRecount3)
+
+# Identify date columns (must be in Date format)
+date_columns <- sapply(CombinedRecount3, function(x) any(class(x) %in% c("Date", "POSIXct")))
+
+# Convert only date columns to character type
+CombinedRecount3[, date_columns] <- lapply(CombinedRecount3[, date_columns], as.character)
+
+#make strings NA
+is.na(CombinedRecount3) <- CombinedRecount3=="NA"
+CombinedRecount3[CombinedRecount3 == "NULL"] <- NA
+
+CombinedRecount3 <- as.data.frame(CombinedRecount3)
+write.csv(CombinedRecount3, "C:\\combinedRecount3.csv", row.names = FALSE)
+View(CombinedRecount3)
+#counts how many rows are in data set
+nrow(CombinedRecount3) #678
+
+#makes a table of the table of how many unique entries are in the "recount ID..." coulumn
+##shows how many entries are repeated how many number of times
+###only one table(recount3$'recount ID...) shows the Recount IDs and how many times they appear
+table(table(CombinedRecount3$`recount ID (from recount3, copy and paste from the “project” column)`))  #58 repeats, 562 once
+
+#randomize the rows in the dataframe
+set.seed(1)
+##sample1:nrow = randomize
+CombinedRecount3r <- CombinedRecount3[sample(1:nrow(CombinedRecount3)),]
+
+#only keep unique rows for rid
+Recount3_unique <- CombinedRecount3r[!duplicated(CombinedRecount3r$`recount ID (from recount3, copy and paste from the “project” column)`),]
+nrow(Recount3_unique) #620 
+table(table(Recount3_unique$`recount ID (from recount3, copy and paste from the “project” column)`)) #620
+
+#make strings NA
+is.na(Recount3_unique) <- Recount3_unique == "NA"
+
+#make into a matrix (remove lists from google sheets import)
+Recount3_unique <- apply(Recount3_unique,2,as.character)
+
+#make into a datafrmae
+Recount3_unique = as.data.frame(Recount3_unique)
+
+is.na(Recount3_unique) <- Recount3_unique == "NULL"
+
+#export new combined data set as CSV and read back in
+Recount3_unique <- apply(Recount3_unique,2,as.character )
+write.csv(Recount3_unique, "C:\\recount3uniquecombined.csv", row.names = FALSE)
