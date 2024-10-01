@@ -1,0 +1,483 @@
+#Lit Review Official
+# Import for analyses
+library(googlesheets4)
+library(dplyr)
+Recount3_uniqueGS <- read_sheet("https://docs.google.com/spreadsheets/d/1hDltecXvzvod3B2JvBH9uvn3khI7f9HTN5PKuPnMaLo/edit?usp=sharing", col_types = "c")
+Recount3_uniqueGS[Recount3_uniqueGS =="NA"] <- NA
+
+table(table(Recount3_uniqueGS$`recount ID (from recount3, copy and paste from the “project” column)`)) 
+#620, should be no repeats!
+#make ds of studies that fit our criteria
+
+StudiesIncludedY <- subset(Recount3_uniqueGS, `Include study?`=="Yes") #339
+#only keep Primary sample (includes sorted or purified cells) studies
+StudiesIncluded <- subset(StudiesIncludedY, `Sample type` %in% c("LCL, fibroblast, or iPSC", "Primary sample (includes sorted or purified cells)")) 
+#studies included is misleading, we have not filtered out studies that use all established cell lines
+##to do in a bit
+StudiesIncluded$`Number of samples (from recount3, copy and paste from the “n_samples” column)`<- as.numeric(StudiesIncluded$`Number of samples (from recount3, copy and paste from the “n_samples” column)`)
+sum(StudiesIncluded$`Number of samples (from recount3, copy and paste from the “n_samples” column)`) #30883
+##again, not too relevant becuase many of these will be in cell lines
+table(table(Recount3_uniqueGS$`Include study?`)) #44, 237, 339
+
+#time to separate out individual cell types into chunks
+chunk1 <- StudiesIncluded[, c(2, 16, 20:41)]
+chunk2 <- StudiesIncluded[, c(2, 16, 46:67)]
+chunk3 <- StudiesIncluded[, c(2, 16, 72:93)]
+colnames(chunk1) <- colnames(chunk2) <- colnames(chunk3) <- c("RecountID", "LACountry", "SamType", "SourceTissueType", "Ontology", "Individs", "Biorep",  "include" , "identifiers", "id1", "id1individs", "id2", "id2individs", "id3", "id3individs", "id4", "id4individs",  "id5", "id5individs", "idnotes", "samplingcity", "samplingcountry", "exptech", "genotypes")
+
+chunk4 <- StudiesIncluded[, c(2, 16, 98:119)]
+chunk5 <- StudiesIncluded[, c(2, 16, 124:145)]
+chunk6 <- StudiesIncluded[, c(2, 16, 150:171)]
+colnames(chunk4) <- colnames(chunk5) <- colnames(chunk6) <- c("RecountID", "LACountry", "SamType", "SourceTissueType", "Ontology","cellosaurus", "celllinecollection", "Individs", "Biorep",  "include" , "identifiers", "id1", "id1individs", "id2", "id2individs", "id3", "id3individs", "id4", "id4individs",  "id5", "id5individs", "idnotes", "exptech", "genotypes")
+
+C123 <- rbind(chunk1, chunk2, chunk3) #963
+C456 <- rbind(chunk4, chunk5, chunk6) #963
+#remove unnecessary columns from C456
+
+#remove unnecessary columns
+C456 <- C456 %>%
+  select(-cellosaurus, -celllinecollection)
+#remove rows with all NA values
+C456 <- C456 %>%
+  mutate(across(everything(), ~ na_if(., "NA")))
+#rid of empty sections and keep only what we want 
+C456 <- C456[C456$SourceTissueType %in% c("LCL", "iPSC", "Fibroblast", "iPSC - derived into another cell type"),] #74
+#74
+
+#keep only primary/fibroblasts/lcls ect from C123
+C123 <- C123[C123$SamType %in% c("LCL, fibroblast, or iPSC", "Yes, primary", "Primary sample (includes sorted or purified cells)", "Yes, LCL, fibroblast, or iPSC"),] #427
+#427
+
+#bind dfs
+ultralist <- bind_rows(C123, C456) #501
+
+#clean out possible established cell lines, find them in ultralist and parse out commercial/established cell lines
+celllines <- ultralist[ultralist$SourceTissueType %in% c("iPSC - derived into another cell type", "Fibroblast", "iPSC", "LCL"),] #69
+celllines <- celllines[!is.na(celllines$Ontology),] #53
+
+#Studies to exclude:
+###"established. exclude" found on Cellosaurus
+##SRP102444 - established. exclude WI-38
+##SRP101943 - close match to names in Cellosaurus. exclude C17
+##SRP101943 - established cancer line. exclude. BU3
+##SRP101943 - established. exclude. SP212
+##SRP114975 - established. exclude. iPSC2
+##SRP114975 - established. exclude. iPSC3
+##SRP114975 - established. exclude iPSC 1
+##SRP125589 - for sale on ATCC. exclude
+##SRP158591 - similar named line for sale ATCC. exclude
+##SRP126100 - established. exclude. MRC-5
+##SRP061682 - established, purchased. exclude. YZ1
+##SRP136071 - established. exclude. 
+##ERP111522 - established. exclude. SFC156-03-01
+##ERP111522 - established. exclude. SFC865-03-07
+##ERP111522 - established. exclude. SFC067-03-01
+##SRP089833 - established. exclude. H9
+##SRP072352 - established. exclude. Hs27
+##SRP102444 - established. exclude. 297L1
+##SRP106049 - established. exclude. Blau2-R334W", "Blau2-corrected", "201B7-WT
+##SRP108320 - established. exclude. WT2-iPS
+##SRP131116 - established. exclude. GM05757
+
+#Studies to keep
+##SRP076456 - from patients. keep
+##SRP079166 - WTC11. keep
+##SRP162503 - patient ipsc cell lines. keep
+##SRP155381 - from patient iNSCs. keep
+##SRP061192 - looked at paper linked to SRA, believe its from patients. keep
+##SRP154009 - created in study. keep
+##SRP076456 - from patient fibroblasts. keep
+##SRP079166 - WTC10. keep
+##SRP061192 - patient iPSC. keep
+##SRP154009 - created in study. keep
+##SRP079166 - WTC10. keep
+##SRP061192 - donor iPSC lines. keep
+##SRP102922 - made with donor fibroblasts. keep CS58iMCT8
+##SRP102922 -  made with donor fibroblasts. keep CS01iMCT8
+##SRP102922-  made with donor fibroblasts. keep CS03iCTR
+##SRP154009 - H20682. keep
+##SRP080962 - from collaborator. keep TkDA3
+##SRP162300 - from collaborator. keep SCVI-113
+
+#No line name, keep I guess
+##SRP096016
+##SRP032165
+##SRP090040
+##SRP057251
+##SRP136469
+##SRP012461
+##SRP043684
+##SRP096016
+##SRP090040
+##SRP057251
+##SRP096016
+##SRP057251
+
+establishedstudies <- c("SRP102444","SRP101943","SRP114975","SRP125589","SRP158591","SRP126100","SRP061682","SRP136071","ERP111522","SRP089833","SRP072352","SRP106049","SRP108320","SRP131116")
+celllines <- celllines[celllines$RecountID %in% establishedstudies,] #23
+
+#remove rows, representing commercial/established cell lines, from ultralist
+##did not remove entire recountid (establishedstudies) in case other entries under the recountid are from acceptable cell line or primary sample
+ultralist <- ultralist %>%
+  anti_join(celllines, by=colnames(ultralist)) #478, (501-23 rows in celllines, yay!)
+
+#look for duplicated individuals with multiple tissue types entered
+duplicatesOnly <- ultralist %>%
+  group_by(across(c(1, 6, 10:19))) %>%
+  filter(n() > 1) %>%
+  group_by(RecountID)#99
+
+#rows with NA in "Individs" column are all unwanted duplicates that are a product of recountids with only fibroblasts, LCLs, iPSCs
+todelete <- ultralist[is.na(ultralist$Individs),] #43
+#[1] "SRP102444" "SRP125589" "SRP106049" "SRP126100" "SRP061682" "SRP108320" "SRP136071" "SRP089833" "SRP072352"
+
+##entries in todelete are all duplicates lacking info
+##will delete as the wanted info is kept in other entries
+ultralist <- ultralist[!is.na(ultralist$Individs), ] #435
+table(table(ultralist$RecountID))
+length(unique(ultralist$RecountID)) #312
+
+#at this point, i believe we have our true "studies included"!!!
+##make a list of true "studies included" for later
+truestudiesincluded <- unique(ultralist$RecountID) #312 (312 studies included!)
+
+
+#some duplicates remain
+##try to remove rows that are the same individual, duplicated by tissue type (same #individuals and identifiers)
+tissuedups <- ultralist %>%
+  filter(duplicated(ultralist[c(1,6,10:19)]) | duplicated(ultralist[c(1,6,10:19)], fromLast = TRUE)) %>%
+  arrange(RecountID) #99
+length(unique(tissuedups$RecountID)) #43
+##all the same with individual information, same individual (if info in provided) but different tissue type
+ultralistU <- ultralist %>%
+  filter(!duplicated(ultralist[c(1, 6, 10:19)])) %>%
+  arrange(RecountID)#379
+length(unique(ultralistU$RecountID)) #312
+
+print(duplicated(ultralistU$RecountID))
+#fix human errors
+ultralistU$Individs <- gsub("Unsure, 120 total", "120", ultralistU$Individs)
+ultralistU$Individs <- gsub("At least 4", "4", ultralistU$Individs)
+length(unique(ultralistU$RecountID))
+
+#remove duplicates with "unknown" or unreported" individual numbers, will not factor into analyses down the road
+ultralistU <- ultralistU %>%
+  filter(!is.na(Individs) & !Individs %in% c("unreported", "see first sample", "unknown", "Unknown", "Unknown (purchased the cells", "Unreported"))
+#351
+#292 unique SRA ids remaining, that is okay
+
+#still some duplicates remain 
+n_occurRIDs <- data.frame(table(ultralistU$RecountID))
+n_occurRIDs[n_occurRIDs$Freq>1,]
+
+ultralistdups <- ultralistU %>%
+  filter(duplicated(RecountID) | duplicated(RecountID, fromLast = TRUE)) %>%
+  arrange(RecountID)
+#n_occurRIDs[n_occurRIDs$Freq>1,]
+#Var1 Freq
+#2   DRP001150    2 --> in supps, may be incorrect
+#12  ERP106996    3 --> ??
+#20  SRP011903    2--> looks good, keep
+#30  SRP032165    2--> from different sources, keep
+#37  SRP041825    2 --> ??
+#47  SRP048759    2 --> ambiguous on what came from which donor, keep with inital reporting
+#55  SRP052896    3 --> ?? may not even have seq
+#58  SRP056197    3 --> looks okay
+#8  SRP062062    3 --> sure
+#83  SRP071837    2
+#86  SRP074581    2
+#87  SRP074688    2
+#88  SRP075236    2
+#90  SRP076099    2--> healthy vs diseased individuals, keep!
+#93  SRP076790    3
+
+#106 SRP079684    2--> spelling different in one of the identifiers, most likely duplicate.
+
+#111 SRP082143    2--> info buried deep in supplements, confusing but okay
+#14 SRP090040    3
+#116 SRP090472    2
+#117 SRP090509    2
+#118 SRP090787    2--> reviewed, looks legit!
+#128 SRP100394    2
+#131 SRP100947    2
+#154 SRP109781    2
+#159 SRP113558    2
+#164 SRP114956    3-->  "from a different group of CTCL patients", looks good!
+#165 SRP114975    2
+#168 SRP115557    2
+#197 SRP133881    3
+#202 SRP136469    2--> looks good
+#209 SRP144041    2
+#225 SRP154009    2
+#236 SRP158943    2
+#242 SRP162300    4
+#246 SRP163252    3
+#247 SRP163661    3
+#249 SRP164910    2
+#252 SRP166966    3
+#255 SRP167447    3
+#257 SRP169128    2
+#259 SRP171145    2
+#287 SRP195743    3
+#291 SRP221351    3
+
+#remove second duplicate and cell line study
+ultralistU <- ultralistU[!(ultralistU$RecountID == "SRP079684" & ultralistU$id3 == "African American"),] #350
+
+#at this point, I am moving on but will come back if I have time to look up the rest of the duplicates for tissue types
+##I am confident that these are mostly correct BUT let this be further proof that finding which individuals are reported is difficult
+
+#starting point with UltralistU
+write.csv(ultralistU, "~/Downloads/UltralistUfinal.csv")
+library(readxl)
+ultralistU <-  read_xlsx("~/Downloads/LitReviewFinalFinal.xlsx", sheet = "UltralistU")
+ultralistU <- ultralistU %>% select(-...1)
+ultralistU <- ultralistU %>%
+  mutate(across(everything(), ~na_if(., "NA")))
+# calculate the total individuals in the studies included
+ultralistU$Individs <- as.numeric(as.character(ultralistU$Individs))
+totalindividsincluded <- sum(ultralistU$Individs, na.rm = TRUE) #16801
+
+#this cleaning has sufficiently removed cell lines and most tissue duplicates
+##from here we can move onto analysis of individuals and clean a little once we remove studies without reporting on individuals
+##bring in nona!!!
+
+# analysis of individuals
+
+#remove rows without identification reported, NA in “ID1” and "id1individs"
+NoNAneww <- ultralistU[!is.na(ultralistU$id1) | !is.na(ultralistU$id1individs), ] #68
+#now that the NA noise is gone, lets clean out tissue duplicates again...
+NoNAnewu <- NoNAneww[!(duplicated(NoNAneww[c(1,6,10:19)])|duplicated(NoNAneww[c(1,6,10:19)], fromLast = TRUE)),]
+print(duplicated(NoNAnewu$RecountID))
+#still some duplicates remain 
+n_occurRIDs <- data.frame(table(NoNAnewu$RecountID))
+n_occurRIDs[n_occurRIDs$Freq>1,]
+#n_occurRIDs[n_occurRIDs$Freq>1,]
+#Var1 Freq
+#25 SRP076099    2--> healthy vs diseased individuals, keep!
+#28 SRP082143    2--> info buried deep in supplements, confusing but okay
+#29 SRP090787    2--> reviewed, looks legit!
+#38 SRP114956    2-->  "from a different group of CTCL patients", looks good!
+#45 SRP136469    2--> looks good
+
+duplicatesSRA <- NoNAnewu %>%
+  group_by(across(1)) %>%
+  filter(n()>1)
+#remaining sra duplicates are cleared
+#I think data is finally clean enough to split up SRAs for analysis of individuals
+#will need additional clean up within SRA IDs to come
+
+#thin out columns
+inv1<- NoNAnewu[, c(1,2,9,10,11,22,24)]
+inv2<- NoNAnewu[, c(1,2,9,12,13,22,24)]
+inv3<- NoNAnewu[, c(1,2,9,14,15,22,24)]
+inv4<- NoNAnewu[, c(1,2,9,16,17,22,24)]
+inv5<- NoNAnewu[, c(1,2,9,18,19,22,24)]
+colnames(inv1) <-  colnames(inv2) <- colnames(inv3) <- colnames(inv4) <- colnames(inv5) <- c("recount3", "lacountry", "ReportedS", "ReportedT", "individs", "samcountry", "genotypes")
+#bind back together
+
+nona <- bind_rows(inv1, inv2, inv3, inv4, inv5) #340
+nona <- nona[nona$individs != "unspecified", ]#338
+nona <- nona %>%
+  filter(!is.na(ReportedS)) %>%
+  arrange(recount3)#124
+nona$individs <- as.numeric(nona$individs) 
+#remove duplicated individuals
+nona <- nona[!(nona$recount3 == "SRP059035" & nona$ReportedT == "Asian"),]
+nona <- nona[!(nona$recount3 == "SRP045048" & nona$ReportedT == "Asian"),]
+#122
+#remove human errors
+nona <- nona%>% filter(!ReportedT %in% c("Individuals with a death-to-preservation interval of <6 h", "Ancestry", "nondiabetic", "Unknown", "Non-Caucasian", "Nonblack")) #129 (139) obs after
+#116
+
+#check for duplicate IDs
+duplicatesnona <- nona %>%
+  group_by(recount3, ReportedT) %>%
+  filter(n() > 1)
+#still the same SRA Ids from before
+
+#percent of studies including info about individuals race/ethnicity/ancestry
+totalstudieswIDs <- length(unique(nona$recount3)) #61
+totalstudieswIDs/length(truestudiesincluded) *100
+#19.55128
+totalIDindivids <- sum(nona$individs) #3376
+#percent of individuals with identifiers reported
+totalIDindivids/totalindividsincluded *100
+#[1] 20.09404
+
+#standardize terms in the ReportedSel column
+nona$ReportedS[nona$ReportedS %in% c("Ancestry as inferred by me from the study", "Ancestry as reported by the study authors")] <- "ancestry"
+nona$ReportedS[nona$ReportedS %in% c("Ancestry, ethnicity, and race are not reported in the paper, Race as inferred by me from the study","Race as inferred by me from the study","Race as reported by the study authors", "Race as reported by the study authors, Ethnicity as reported by the study authors")] <- "race"
+nona$ReportedS[nona$ReportedS %in% c("Ethnicity as inferred by me from the study", "Ethnicity as reported by the study authors", "Ethnicity as reported by the study authors, Race as inferred by me from the study")] <- "ancestry"
+
+table(nona$ReportedS) #(anc 50, race 66)
+#group by identifier, then sum the number of individuals
+
+#read in Mastersheet from google drive
+ancestryterms <- read_sheet("https://docs.google.com/spreadsheets/d/10_wPOzXmSqLO7sfpVus5HFiia5LDFQFhjzbCo1eTjt4/edit?usp=sharing", "202407_mastersheet")
+#use irene code to standardize reported sel
+ancestryterms <- ancestryterms[, c("Term", "SRA.coding", "IGR.coding.strictest", "IGR.term.strictest", "hispanic")]
+colnames(ancestryterms) <- c("ReportedT", "ReportedS", "InterpretS", "InterpretT", "hispanic")
+ancestryterms <- ancestryterms[, c("ReportedT", "ReportedS", "InterpretS", "InterpretT", "hispanic")]
+ancestryterms <- as.data.frame(ancestryterms)  # Convert to regular data frame if needed
+ancestryterms$ReportedT <- as.character(ancestryterms$ReportedT)
+ancestryterms <- ancestryterms %>%
+  mutate(across(everything(), ~na_if(., "NA")))
+#make all lowercase
+ancestryterms$ReportedS <- tolower(ancestryterms$ReportedS)
+ancestryterms$ReportedT <- tolower(ancestryterms$ReportedT)
+
+ancestryterms <- transform(ancestryterms, `InterpretT` = ifelse(is.na(`hispanic`), `InterpretT`, `hispanic`)) 
+#hispanic calculated with race category
+ancestryterms$InterpretS[ancestryterms$InterpretT %in% c("non.hispanic", "hispanic")] <- "race"
+ancestryterms <- ancestryterms[, c("ReportedT", "ReportedS", "InterpretS", "InterpretT")]
+
+#Perform a left join between Grouped and ancestryterms
+ancestryterms$ReportedT <- unlist(ancestryterms$ReportedT)
+ancestryterms$ReportedT <- as.character(ancestryterms$ReportedT)
+
+nona$ReportedS <- tolower(nona$ReportedS)
+nona$ReportedT <- tolower(nona$ReportedT)
+merged <- left_join(nona, ancestryterms, by = c('ReportedT', 'ReportedS'), relationship = "many-to-many")
+merged <- unique(merged) #116
+sum(merged$individs) #3376
+write.csv(merged, "~/Mergedfinal.csv")
+
+# Ancestry/Race
+#Simplify code to present % for each subcategory of InterpretT
+ancestry_df <- subset(merged, `InterpretS` %in% "geography") #50
+ancestry_df$InterpretT[is.na(ancestry_df$InterpretT)] <- "Unknown"
+
+total_reported_ancestry <- sum(ancestry_df$individs) #2126
+
+category_totalsAncestralGeography <- aggregate(individs ~ InterpretT, data = ancestry_df, sum)
+category_totalsAncestralGeography$Percentage <- (category_totalsAncestralGeography$individs / total_reported_ancestry) * 100
+print(category_totalsAncestralGeography) #percentage of individuals that reported ancestry/geography
+write.csv(category_totalsAncestralGeography, "~/Downloads/Category_totalAncestralGeographyfinal.csv", row.names = F)
+
+#percent of individuals with identifiers reporting ancestry
+total_reported_ancestry/totalIDindivids *100
+#[1] 62.97393
+
+# Race
+#Simplify for Race
+race_df <- subset(merged, `InterpretS`== "race") #70
+race_df$InterpretT[is.na(race_df$InterpretT)] <- "Unknown"
+total_reported_race <- sum(race_df$individs) #1250
+
+category_totalsRace <- aggregate(individs ~ InterpretT, data = race_df, sum)
+category_totalsRace$Percentage <- (category_totalsRace$individs/ total_reported_race) *100
+print(category_totalsRace) #percentage of individuals that reported race
+write.csv(category_totalsRace, "~/Downloads/Category_totalRacefinal.csv", row.names = F)
+
+#percent of individs reporting race
+total_reported_race/totalIDindivids *100
+# [1] 37.02607
+
+
+# Outline analyses
+
+#percent of studies focusing on LCLs, Fibroblasts or iPSCs
+studiesincludedT <- StudiesIncluded[StudiesIncluded$`recount ID (from recount3, copy and paste from the “project” column)` %in% (truestudiesincluded),]
+#312
+write.csv(studiesincludedT, "~/Downloads/studiesincludedT.csv")
+LFiStudies <- studiesincludedT[studiesincludedT$`Sample type` == "LCL, fibroblast, or iPSC",] #20
+nrow(LFiStudies)/nrow(studiesincludedT) *100
+# [1] 6.410256
+
+
+
+# *Geography*
+
+#percent of studies noting the sampling country
+studiesgeog <- ultralistU[, c("RecountID", "samplingcountry")] #350
+studiesgeognona <- studiesgeog[!is.na(studiesgeog$samplingcountry), ] #322
+studiesgeognona <- studiesgeognona[!studiesgeognona$samplingcountry %in% c("unknown", "Unknown", "unreported", "Unreported","unreported (cryopreserved primary human hepatocytes (HUCPQ) were purchased from Lonza)", "unreported (mentions Mayo Clinic, most likely USA)","Unreported but assumed to be Germany", "Unreported, assuming to be United States"  ),]
+#243
+table(studiesgeognona$samplingcountry) #all places, confirmed before taking only unique SRA IDs
+#percent of studies including sampling location
+length(unique(studiesgeognona$RecountID))/length(truestudiesincluded) *100
+#[1] 64.74359
+length(unique(studiesgeognona$RecountID)) #202
+
+#use Nona for individuals analysis
+NoNAGeo <- nona #120
+#fix human errors
+replace_values <- c("United States; United States", "Pennsylvania")
+NoNAGeo$samcountry <- replace(NoNAGeo$samcountry, NoNAGeo$samcountry %in% replace_values, "United States")
+NoNAGeo$samcountry <- replace(NoNAGeo$samcountry, NoNAGeo$samcountry == "unreported", "Unreported")
+NoNAGeo$individs <- as.numeric(NoNAGeo$individs)
+NoNAGeo <- NoNAGeo[!is.na(NoNAGeo$samcountry),] #110
+NoNAGeo <- NoNAGeo[!NoNAGeo$samcountry %in% c("Unknown", "Unreported"),] #85
+total_geoindividis <- sum(NoNAGeo$individs) #2917
+
+
+#Percent of samples from high income countries ##World Bank Country and Lenging Groups
+## https://datahelpdesk.worldbank.org/knowledgebase/articles/906519-world-bank-country-and-lending-groups 
+WBCountryGroups <- read.csv("Desktop/Vanderbilt/WorldBankIncomeClasses.csv")
+##Align country names between WB sheet and ours
+
+NoNAGeo$samcountry <- as.character(NoNAGeo$samcountry)
+NoNAGeo$samcountry <- replace(NoNAGeo$samcountry, NoNAGeo$samcountry == "England", "United Kingdom")
+
+WBCountryGroups$Economy <- replace(WBCountryGroups$Economy, WBCountryGroups$Economy == "Hong Kong SAR, China", "Hong Kong")
+WBCountryGroups$Economy <- replace(WBCountryGroups$Economy, WBCountryGroups$Economy == "Korea, Rep.", "South Korea")
+WBCountryGroups <- WBCountryGroups[, c("Economy", "Income.group")]
+colnames(NoNAGeo)[colnames(NoNAGeo)== 'samcountry'] <- 'Economy'
+Economies <- left_join(NoNAGeo, WBCountryGroups, by= "Economy",) #82
+write.csv(Economies, "~/Downloads/economiesfinal.csv")
+
+category_totalsEconomies <- aggregate(individs ~ Income.group, data = Economies, sum)
+category_totalsEconomies$Percentage <- (category_totalsEconomies$individs / total_geoindividis) * 100
+print(category_totalsEconomies) #percentage of High/Upper middle/ low income countries for sampling country 
+write.csv(category_totalsEconomies, "~/Downloads/Geography_totalreportedfinal.csv", row.names = F)
+
+#percent individuals from US
+usindividuals <- Economies %>%
+  filter(Economy == "United States") %>%
+  summarise(total_individs = sum(individs, na.rm = TRUE)) %>%
+  pull(total_individs) #1675
+usindividuals/total_geoindividis *100 #[1] 57.42201
+
+#percent of studies not focusing on individuals form HIC
+length(unique(Economies$recount3)) #43
+notHIC <- Economies[!Economies$Income.group == "High income",]
+length(unique(notHIC$recount3)) #5
+#[1] 11.62791
+
+category_totalSamCountry <- aggregate(individs ~ Economy, data = Economies, sum)
+category_totalSamCountry$Percentage <- (category_totalSamCountry$individs/total_geoindividis)*100
+print(category_totalSamCountry)
+sum(category_totalSamCountry$individs)
+
+#percent samples with US cencus terms from US institutions
+Economies1 <- left_join(Economies, ancestryterms, by = c("ReportedT", "ReportedS"), relationship = "many-to-many") #85
+Economies1 <- unique(Economies1) #85
+raceUS <- Economies1[Economies1$InterpretS =="race",]
+UniqueraceUS <- length(unique(raceUS$RecountID[raceUS$lacountry== "United States"]))
+total_uniquegeostudies <- n_distinct(raceUS$RecountID) 
+UniqueraceUS/total_uniquegeostudies *100 #100%
+
+#percent of studies with genotype data
+genotypes <- ultralistU[ultralistU$genotypes == "Yes",] #121
+n_distinct(genotypes$RecountID) #101
+n_distinct(genotypes$RecountID)/length(truestudiesincluded) *100
+#[1] 32.37179
+
+#percent of individuals with genotype data
+genotypesnona <- nona[nona$genotypes == "Yes",]  #41
+total_genotypeindivids <- sum(genotypesnona$individs) #1061
+total_genotypeindivids/totalindividsincluded *100
+
+#studies led by institution in HIC
+library(data.table)
+LAC <- studiesincludedT[, c("recount ID (from recount3, copy and paste from the “project” column)", "Last author country"),]
+#312
+colnames(LAC)[colnames(LAC)== "Last author country"] <- 'Economy'
+lastauthoreco <- left_join(LAC, WBCountryGroups, by= "Economy",) #312
+setDT(lastauthoreco)[, 100 * .N/ nrow(lastauthoreco), by= Income.group]
+nrow(lastauthoreco[lastauthoreco$Income.group == "High income", ]) #292
+
+#%studies led by institutions in the US
+us_studies <- studiesincludedT[studiesincludedT$`Last author country` == "United States",]
+nrow(us_studies)/nrow(studiesincludedT) *100
