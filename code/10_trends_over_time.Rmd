@@ -23,6 +23,7 @@ library(plyr)
 library(patchwork)
 library(thematic)
 library(scales)
+library(dplyr)
 
 concatenate_non_na <- function(row) {
   non_na_values <- na.omit(row)
@@ -119,7 +120,7 @@ tmp3<-tmp2
 
 ```
 
-Prep for panel A - dbGap samples over time
+Prep for panel A - dbGap and SRA samples over time
 ```{r}
 byyear<-as.data.frame(aggregate(dbGap2$accession~dbGap2$ReleaseYear,FUN=function(x) length(unique(x))))
 names(byyear)<-c('year','studies')
@@ -142,6 +143,45 @@ panelA <- ggplot(both, aes(x=as.numeric(year),y=samples_csum/1000,color=dataset)
   scale_color_manual(values=c('darkgrey','black'))+
   theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
 
+panelA
+
+ggsave("trends_over_time_all_overall.pdf", width = 7, height = 7)
+ggsave("trends_over_time_all_overall.png", width = 7, height = 7)
+
+# And quickly checking the correlations:
+allSRAFinal$releaseDate2<-as.POSIXct(allSRAFinal$ReleaseDate)
+allSRAFinal$releaseYear<-format(allSRAFinal$releaseDate2, "%Y")
+
+sraByYear <- allSRAFinal %>% dplyr::count(releaseYear, hasDescriptor)
+sraGeoYear <- sraByYear %>% filter(hasDescriptor == "Geographic")
+sraRaceYear <- sraByYear %>% filter(hasDescriptor == "Racial")
+
+sraGeoYear <- inner_join(tmp3, sraGeoYear, join_by(year == releaseYear))
+sraGeoYear$proportion <- sraGeoYear$n/sraGeoYear$samples
+
+sraGeoYear
+
+cor.test(as.numeric(sraGeoYear$year), sraGeoYear$proportion)
+
+sraRaceYear <- inner_join(tmp3, sraRaceYear, join_by(year == releaseYear))
+sraRaceYear$proportion <- sraRaceYear$n/sraRaceYear$samples
+
+sraRaceYear
+
+cor.test(as.numeric(sraRaceYear$year), sraRaceYear$proportion)
+
+dbGap3<-dbGap2[,c(1:9,17,20)] %>%
+  pivot_longer(!accession & !ReleaseYear, names_to = "group", values_to = "count")
+tmp4<-as.data.frame(aggregate(dbGap3$count~dbGap3$ReleaseYear+dbGap3$group,FUN=sum))
+names(tmp4)<-c('Var1','Var2','Freq')
+
+dbGapByYear <- aggregate(tmp4$Freq, by=list(year=tmp4$Var1), FUN=sum)  
+dbGapByYear <- inner_join(tmp2, dbGapByYear, by="year")
+dbGapByYear$proportion <- dbGapByYear$x/dbGapByYear$samples
+
+dbGapByYear
+
+cor.test(as.numeric(dbGapByYear$year), dbGapByYear$proportion)
 
 ```
 
@@ -428,5 +468,8 @@ ggsave("trends_over_time_all.png", width = 7, height = 7)
 
 ggsave("trends_over_time_all_alt.pdf", width = 7, height = 7)
 ggsave("trends_over_time_all_alt.png", width = 7, height = 7)
+
+
+
 ```
 
