@@ -67,40 +67,39 @@ So that can be done, but we gotta grab the right IDs only, which makes it harder
 It also seems like we can cut down on the number of calls to NCBI by looking at studies instead of each run individually, which should make this faster and less embarrassing.
 
 ```{r from-bio-project-to-everything-1}
-# Function to fetch Run Accessions and BioSample IDs using smaller queries
-get_runs_and_biosamples_granular <- function(bp_id, max_retries = 3) {
+# Function to get Runs and BioSamples for a BioProject
+get_runs_and_biosamples <- function(bp_id, max_retries = 3) {
   attempt <- 1
   while (attempt <= max_retries) {
     tryCatch({
       # Let's not get banned from NCBI... they say less than 3 queries per second, so... 
-      Sys.sleep(1)  # 1-second delay between queries
+      Sys.sleep(1)
       
-      # Search for BioProject in SRA
-      search_res <- entrez_search(db = "sra", term = paste0(bp_id, "[BioProject] AND TRANSCRIPTOMIC[Src]"), retmax = 1000)
-
+      # Search for BioProject in SRA (search with web history)
+      search_res <- entrez_search(db = "sra", term = paste0(bp_id, "[BioProject] AND TRANSCRIPTOMIC[Src]"), use_history = TRUE, retmax = 5000)
+    
       if (length(search_res$ids) == 0) {
         return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
       }
-
-      # Create WebEnv (Web History) and query_key for this search
-      webenv <- search_res$webenv
-      query_key <- search_res$query_key
-
-      # Fetch results in smaller chunks to avoid large queries
-      chunk_size <- 50
-      all_results <- list()
+    
+      # Retrieve webenv and query_key for pagination
+      webenv <- search_res$web_history$WebEnv
+      query_key <- search_res$web_history$QueryKey
       
-      # Process in chunks
-      batch_start <- 1
+      # Initialize variables for fetching results in chunks
+      chunk_size <- 500
+      all_results <- list()
+      batch_start <- 0  # Initial offset for pagination
+    
       repeat {
-        # Fetch results in chunks, use retstart to paginate
-        fetch_res <- entrez_fetch(db = "sra", rettype = "xml", webenv = webenv, query_key = query_key, retstart = batch_start, retmax = chunk_size)
+        # Fetch results in chunks using WebEnv and Query Key
+        fetch_res <- entrez_fetch(db = "sra", web_history = search_res, rettype = "xml", WebEnv = webenv, query_key = query_key, parsed=FALSE, retstart = batch_start, retmax = chunk_size)
         xml_doc <- read_xml(fetch_res)
-        
-        # Extract experiment packages
+    
+        # Extract experiment packages (which contains multiple runs)
         packages <- xml_find_all(xml_doc, ".//EXPERIMENT_PACKAGE")
-
-        # Loop through each package (which could contain multiple runs)
+        
+        # Extract Run and BioSample info for each package
         records <- lapply(packages, function(pkg) {
           run_nodes <- xml_find_all(pkg, ".//RUN_SET/RUN")
           run_accessions <- xml_attr(run_nodes, "accession")
@@ -110,42 +109,41 @@ get_runs_and_biosamples_granular <- function(bp_id, max_retries = 3) {
           
           data.frame(Run = run_accessions, BioSample = biosample_id, BioProject = bp_id, stringsAsFactors = FALSE)
         })
-        
+      
         all_results <- append(all_results, records)
         
-        # Increment to the next set of results
+        # Increment to fetch the next batch
         batch_start <- batch_start + chunk_size
         
-        # Check if we need to stop (if we retrieved fewer results than requested)
+        # Stop fetching if fewer results are returned than requested
         if (length(records) < chunk_size) {
           break
         }
-        
-        Sys.sleep(1)  # Optional: sleep between fetches to avoid hitting server too frequently
-        
       }
-      
+    
+      # Combine results from all batches
       return(bind_rows(all_results))
-
+  
     }, error = function(e) {
       message(paste("Error processing BioProject", bp_id, "on attempt", attempt, ":", e$message))
-      
-      # Retry if it's not the last attempt
-      if (attempt < max_retries) {
-        attempt <- attempt + 1
-        message("Retrying... Attempt ", attempt)
-        Sys.sleep(2)  # Sleep between retries
-      } else {
-        # After max retries, return NA to indicate failure
-        message("Max retries reached. Skipping this BioProject.")
-        return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
-      }
-    })
-    
+  
+    # Retry if it's not the last attempt
+    if (attempt < max_retries) {
+      attempt <- attempt + 1
+      message("Retrying... Attempt ", attempt)
+      Sys.sleep(1)  # Sleep between retries
+    } else {
+    # After max retries, return NA to indicate failure
+      message("Max retries reached. Skipping this BioProject.")
+      return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
+    }
+  }
+    )
+
     # If successfully retrieved data, return it
     if (exists("all_results")) {
-      return(bind_rows(all_results))
-    }
+  return(bind_rows(all_results))
+  }
   }
 }
 
@@ -155,11 +153,11 @@ The function has been defined and now let's do a test run with a small number of
 
 ```{r from-bioproject-to-everything-2, eval=F}
 # For debugging:
-# kasperBPs <- c("DRP000366", "DRP000425", "DRP000499", "DRP000527", "DRP000622", "DRP000665", "DRP000929", "DRP000987", "DRP001048", "DRP001055", "DRP001149", "DRP001150", "DRP001194", "DRP001219", "DRP001220", "DRP001280", "DRP001797", "DRP001919", "DRP001953", "DRP002315")
-# kasperBP <- "DRP000499"
+kasperBPs <- c("DRP000366", "DRP000425", "DRP000499", "DRP000527", "DRP000622", "DRP000665", "DRP000929", "DRP000987", "DRP001048", "DRP001149", "DRP001150", "DRP001194", "DRP001219", "DRP001220", "DRP001280", "DRP001797", "DRP001919", "DRP001953", "DRP002315", "DRP005280") # Has one of the edge cases
+kasperBP <- "DRP000499"
+kasperBPHard <- "DRP005280"
 
-
-testBPs <- lapply(kasperBPs, get_runs_and_biosamples)
+testBPs <- lapply(kasperBPHard, get_runs_and_biosamples)
 testIDs <- bind_rows(testBPs)
 
 #Let's compare with what he had. First, a left_join
@@ -190,7 +188,7 @@ allSRAFinalKasper %>% count(pred_pop, strictestRace)
 allSRAFinalKasper %>% filter(pred_pop == "SAS")
 ```
 
-Ok this is awesome and it works. So now let's run the entire set of queries, 100 at a time so it doesn't completely burn down:
+Ok this works - took some debugging now. So now let's run the entire set of queries, 100 at a time so it doesn't completely burn down:
 
 ```{from-bio-project-to-everything-3}
 
@@ -230,9 +228,10 @@ process_in_batches <- function(bioProjects, batch_size = 100, delay = 1) {
   }
 
 # Run the batch processing for the BioProjects
+# bpsToGrab <- unique(fromKasper$pop)[1:100] # for testing some of the larger ones...
 bpsToGrab <- unique(fromKasper$pop)
-# allBPs <- process_in_batches(kasperBPs, batch_size = 10, delay = 2)
-allBPs <- process_in_batches(bpsToGrab, batch_size = 50, delay = 2)
+
+allBPs <- process_in_batches(bpsToGrab, batch_size = 100, delay = 2)
 ```
 
 If I was feeling devious I would check:
@@ -240,3 +239,21 @@ If I was feeling devious I would check:
 1. diversity in his data, after cleaning it down to biosample, 10 samples per study, and removing obvious cell lines (HeLa etc)
 2. agreement between him and us, as either alluvial or confusion matrix - this can also lead to point 3 below.
 3. sample swaps in Run IDs, but that's really just for my own personal edification - doesn't fit with the paper.
+
+```{r bioproject-to-our-data-1}
+kasperComplete <- inner_join(fromKasper, allBPs, join_by("sub_pop" == "Run"))
+allSRAFinalKasper <- inner_join(allSRAFinal, kasperComplete, join_by("BioSample" == "BioSample"))
+
+dim(allSRAFinalKasper) 
+
+# But that's too many rows because we're operating at the Run level rather than the BioSample level, so let's clean that mess up:
+allSRAFinalKasper <- allSRAFinalKasper %>% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAFinalKasper)
+
+# Can't help it I wanna tabulate already:
+allSRAFinalKasper %>% count(pred_pop, strictestGeography)
+allSRAFinalKasper %>% count(pred_pop, strictestRace)
+allSRAFinalKasper %>% filter(pred_pop == "SAS")
+
+
+```
