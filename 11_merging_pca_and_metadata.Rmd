@@ -238,5 +238,5 @@ allBPs <- process_in_batches(bpsToGrab, batch_size = 50, delay = 2)
 If I was feeling devious I would check:
 
 1. diversity in his data, after cleaning it down to biosample, 10 samples per study, and removing obvious cell lines (HeLa etc)
-2. agreement between him and us, as either alluvial or confusion matrix
+2. agreement between him and us, as either alluvial or confusion matrix - this can also lead to point 3 below.
 3. sample swaps in Run IDs, but that's really just for my own personal edification - doesn't fit with the paper.
