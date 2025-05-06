@@ -21,6 +21,7 @@ library(reshape)
 library(viridis)
 library(rentrez)
 library(tidyverse)
+library(xml2)
 
 options(device = "quartz")
 ```
@@ -47,9 +48,7 @@ head(allSRAFinal)
 
 And the sad answer is no... their ID is a run ID, whereas mine is a biosample ID... but they should not be hard to link... if I could work out what fields I want. 
 
-But! We do have SRA.Study ids in common, so we just need to grab the biosample ID that corresponds to Kasper's run ID, and we are good to go!
-
-Also they're in the same order... not sure if that helps us somehow. 
+But! We do have SRA.Study ids in common, so we just need to grab the biosample ID that corresponds to Kasper's run ID, and we are good to go for all downstream merging!
 
 ```{r convert-run-to-biosample-1}
 # We start with a test ID from Kasper, and a test ID from me for the same sample:
@@ -65,90 +64,179 @@ iOnion[1]
 
 So that can be done, but we gotta grab the right IDs only, which makes it harder. Let's start with two or three studies, then. 
 
-```{r convert-run-to-biosample-2}
-# A single common study ID
-commonID <- "SRP001371"
+It also seems like we can cut down on the number of calls to NCBI by looking at studies instead of each run individually, which should make this faster and less embarrassing.
 
-onion <- entrez_search(db = "sra", term = paste0(commonID, "[GPRJ] AND TRANSCRIPTOMIC[SRC]"))
+```{r from-bio-project-to-everything-1}
+# Function to fetch Run Accessions and BioSample IDs using smaller queries
+get_runs_and_biosamples_granular <- function(bp_id, max_retries = 3) {
+  attempt <- 1
+  while (attempt <= max_retries) {
+    tryCatch({
+      # Let's not get banned from NCBI... they say less than 3 queries per second, so... 
+      Sys.sleep(1)  # 1-second delay between queries
+      
+      # Search for BioProject in SRA
+      search_res <- entrez_search(db = "sra", term = paste0(bp_id, "[BioProject] AND TRANSCRIPTOMIC[Src]"), retmax = 1000)
 
-onion <- entrez_summary(db = "sra", commonID)
+      if (length(search_res$ids) == 0) {
+        return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
+      }
 
+      # Create WebEnv (Web History) and query_key for this search
+      webenv <- search_res$webenv
+      query_key <- search_res$query_key
 
+      # Fetch results in smaller chunks to avoid large queries
+      chunk_size <- 50
+      all_results <- list()
+      
+      # Process in chunks
+      batch_start <- 1
+      repeat {
+        # Fetch results in chunks, use retstart to paginate
+        fetch_res <- entrez_fetch(db = "sra", rettype = "xml", webenv = webenv, query_key = query_key, retstart = batch_start, retmax = chunk_size)
+        xml_doc <- read_xml(fetch_res)
+        
+        # Extract experiment packages
+        packages <- xml_find_all(xml_doc, ".//EXPERIMENT_PACKAGE")
 
-iOnion <- entrez_search(db = "sra", term = igrID)
+        # Loop through each package (which could contain multiple runs)
+        records <- lapply(packages, function(pkg) {
+          run_nodes <- xml_find_all(pkg, ".//RUN_SET/RUN")
+          run_accessions <- xml_attr(run_nodes, "accession")
+          
+          biosample_node <- xml_find_first(pkg, ".//EXTERNAL_ID[@namespace='BioSample']")
+          biosample_id <- if (!is.na(biosample_node)) xml_text(biosample_node) else NA
+          
+          data.frame(Run = run_accessions, BioSample = biosample_id, BioProject = bp_id, stringsAsFactors = FALSE)
+        })
+        
+        all_results <- append(all_results, records)
+        
+        # Increment to the next set of results
+        batch_start <- batch_start + chunk_size
+        
+        # Check if we need to stop (if we retrieved fewer results than requested)
+        if (length(records) < chunk_size) {
+          break
+        }
+        
+        Sys.sleep(1)  # Optional: sleep between fetches to avoid hitting server too frequently
+        
+      }
+      
+      return(bind_rows(all_results))
 
-kOnion[1]
-iOnion[1]
-
-
-getBPid <- sapply(geoStudies, function(x) entrez_link(dbfrom="sra", id=entrez_search(db = "sra", term = x)$ids[1], db="all")$links$sra_bioproject_all)
-getBPid
-
-getSubmitter <- sapply(getBPid, function(x) extract_from_esummary(entrez_summary(db="bioproject", x[[1]][1]), "submitter_organization"))
-
-
-
-# I actually don't care about the unique identifiers anymore... this is good enough then?  Let's test with a few more samples that are again matched:
-igrIDs <- allSRAFinal$BioSample[1:20] # Looked these up on SRA and grabbed corresponding run IDs manually from run selector, these should match, but we run into a problem that there's a lot more unique run IDs than BioSample ids! Still, should be able to get to 20 in the end!
-kasperIDs <- c("SRR097618", "SRR643708", "SRR643709", "SRR643710", "SRR643711", "SRR643712", "SRR643766", "SRR980415", "SRR980416", "SRR980445", "SRR980446", "SRR787508", "SRR787509", "SRR787517", "SRR787518", "SRR787519", "SRR787520", "SRR787521", "SRR787510", "SRR787511", "SRR787512", "SRR097617", "SRR644512", "SRR616719", "SRR620433", "SRR620434", "SRR620435", "SRR620436", "SRR620437", "SRR620438", "SRR1385239", "SRR1385240", "SRR1385241", "SRR1385242", "SRR1385243", "SRR1385244", "SRR1385245", "SRR1385246", "SRR1385247", "SRR1385248", "SRR1385249", "SRR1385250", "SRR6176944", "SRR6176947", "SRR6176950", "SRR6176952", "SRR6176953", "SRR1067126", "SRR1067226", "SRR1067390", "SRR1068371", "SRR1068374", "SRR1068377", "SRR1068379", "SRR1068407", "SRR1143698", "SRR1143699", "SRR1143701", "SRR1143703", "SRR643702", "SRR643703", "SRR643704", "SRR643705", "SRR643706", "SRR643707", "SRR066170", "SRR066171", "SRR066172", "SRR066173", "SRR453391", "SRR453392", "SRR453393", "SRR453394", "SRR453395", "SRR453396", "SRR453397", "SRR453398", "SRR453399", "SRR453400", "SRR453401", "SRR453402", "SRR453403", "SRR453404", "SRR453405", "SRR453406", "SRR453407")
-
-# Let's make sure these are all here, or at least a decent fraction is:
-length(kasperIDs)
-dim(fromKasper[fromKasper$sub_pop %in% kasperIDs,]) 
-```
-
-
-# It also seems like we can cut down on the number of tests by looking at studies instead of 
-
-iOnion <- sapply(igrIDs, function(x) entrez_search(db = "sra", term = x)$ids)
-kOnion <- sapply(kasperIDs, function(x) entrez_search(db = "sra", term = x)$ids)
-
-iOnion2 <- as.data.frame(iOnion)
-iOnion2$BioSample <- rownames(iOnion2)
-
-kOnion2 <- as.data.frame(kOnion)
-kOnion2$Run <- rownames(kOnion2)
-
-mergedIds <- left_join(iOnion2, kOnion2, join_by("iOnion" == "kOnion"))
-mergedIds <- left_join(mergedIds, fromKasper, join_by("Run" == "sub_pop"))
-
-head(mergedIds)
-
-head(fromKasper)
-
-```
-
-# I just need to annotate Kasper's data, not mine, and can then merge that with my own file, both early on for allSRA, to weed out primary cell lines etc, and then for allSRA final to make some more plots...
-
-```{r leftovers}
-# This took forever to fix but...
-getBPid <- sapply(geoStudies, function(x) entrez_link(dbfrom="sra", id=entrez_search(db = "sra", term = x)$ids[1], db="all")$links$sra_bioproject_all)
-getBPid
-
-getSubmitter <- sapply(getBPid, function(x) extract_from_esummary(entrez_summary(db="bioproject", x[[1]][1]), "submitter_organization"))
-getSubmitter
-
-getSubmitterdf <- as.data.frame(getSubmitter)
-getSubmitterdf$SRA <- rownames(getSubmitterdf)
-
-# And now we add that info back to the relevant column, and replace the GEO calls. I honestly can't remember if I need to vectorise or not but whatever. 
-allSRAFinal$finalSite <- NA
-
-for (i in 1:nrow(getSubmitterdf)){
-  allSRAFinal[allSRAFinal$SRA.Study %in% getSubmitterdf$SRA[i],]$finalSite <- getSubmitterdf$getSubmitter[i]    
+    }, error = function(e) {
+      message(paste("Error processing BioProject", bp_id, "on attempt", attempt, ":", e$message))
+      
+      # Retry if it's not the last attempt
+      if (attempt < max_retries) {
+        attempt <- attempt + 1
+        message("Retrying... Attempt ", attempt)
+        Sys.sleep(2)  # Sleep between retries
+      } else {
+        # After max retries, return NA to indicate failure
+        message("Max retries reached. Skipping this BioProject.")
+        return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
+      }
+    })
+    
+    # If successfully retrieved data, return it
+    if (exists("all_results")) {
+      return(bind_rows(all_results))
+    }
+  }
 }
 
-allSRAFinal$finalSite <- coalesce(allSRAFinal$finalSite, allSRAFinal$Center.Name)
-
-# Is GEO really gone???
-length(unique(allSRAFinal$Center.Name))
-length(unique(allSRAFinal$finalSite)) # Well that definitely increased, so that's good. 
-
-siteTable <- allSRAFinal %>% count(finalSite, SRA.Study)
-
-# I still need to work out what is in what country, but at least I have a single table... 
-write.table(siteTable, file="final_Site_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
-
-# Anyhow, let's make sure we only do this once:
-saveRDS(allSRAFinal, "allSRAFinalTissuesCenters.rds")
 ```
+
+The function has been defined and now let's do a test run with a small number of bioProjects (nb actually not run, just included here for completeness):
+
+```{r from-bioproject-to-everything-2, eval=F}
+# For debugging:
+# kasperBPs <- c("DRP000366", "DRP000425", "DRP000499", "DRP000527", "DRP000622", "DRP000665", "DRP000929", "DRP000987", "DRP001048", "DRP001055", "DRP001149", "DRP001150", "DRP001194", "DRP001219", "DRP001220", "DRP001280", "DRP001797", "DRP001919", "DRP001953", "DRP002315")
+# kasperBP <- "DRP000499"
+
+
+testBPs <- lapply(kasperBPs, get_runs_and_biosamples)
+testIDs <- bind_rows(testBPs)
+
+#Let's compare with what he had. First, a left_join
+sraToKasper <- inner_join(testIDs, fromKasper, join_by("Run" == "sub_pop"))
+dim(sraToKasper) # That gives 707 
+
+dim(fromKasper[fromKasper$pop %in% kasperBPs,]) # and that also gives 707... 
+
+fromKasperSlim <- fromKasper[fromKasper$pop %in% kasperBPs,]
+
+table(testIDs$BioProject)
+table(fromKasperSlim$pop)
+
+table(testIDs$BioProject) - table(fromKasperSlim$pop)
+
+kasperComplete <- inner_join(fromKasperSlim, testIDs, join_by("sub_pop" == "Run"))
+allSRAFinalKasper <- inner_join(allSRAFinal, kasperComplete, join_by("BioSample" == "BioSample"))
+
+dim(allSRAFinalKasper) 
+
+# But that's too many rows because we're operating at the Run level rather than the BioSample level, so let's clean that mess up:
+allSRAFinalKasper <- allSRAFinalKasper %>% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAFinalKasper)
+
+# Can't help it I wanna tabulate already:
+allSRAFinalKasper %>% count(pred_pop, strictestGeography)
+allSRAFinalKasper %>% count(pred_pop, strictestRace)
+allSRAFinalKasper %>% filter(pred_pop == "SAS")
+```
+
+Ok this is awesome and it works. So now let's run the entire set of queries, 100 at a time so it doesn't completely burn down:
+
+```{from-bio-project-to-everything-3}
+
+# Batch processing function
+process_in_batches <- function(bioProjects, batch_size = 100, delay = 1) {
+  # Split the BioProjects list into smaller chunks
+  batches <- split(bioProjects, ceiling(seq_along(bioProjects) / batch_size))
+  
+  # Process each batch sequentially
+  all_results <- list()
+  
+  total_batches <- length(batches)  # Total number of batches
+  
+  for (i in seq_along(batches)) {
+    # Process each BioProject in the batch
+    batch <- batches[[i]]
+    batch_results <- lapply(batch, get_runs_and_biosamples)
+    
+    # Combine the results of this batch
+    all_results <- append(all_results, batch_results)
+
+    # Save progress after each batch (you could save it as CSV or RDS)
+    final_results <- bind_rows(all_results)
+    write.csv(final_results, "bioproject_biosample_runlist.csv", row.names = FALSE)  # Save as CSV
+
+    # Print a message after each batch is done
+    message(paste("Batch", i, "of", total_batches, "completed."))
+
+    # Optional: Add delay after each batch (to avoid rate limits)
+    Sys.sleep(delay)  # Delay after each batch
+  }
+  
+  # Combine all the results into one data frame
+  final_results <- bind_rows(all_results)
+  
+  return(final_results)
+  }
+
+# Run the batch processing for the BioProjects
+bpsToGrab <- unique(fromKasper$pop)
+# allBPs <- process_in_batches(kasperBPs, batch_size = 10, delay = 2)
+allBPs <- process_in_batches(bpsToGrab, batch_size = 50, delay = 2)
+```
+
+If I was feeling devious I would check:
+
+1. diversity in his data, after cleaning it down to biosample, 10 samples per study, and removing obvious cell lines (HeLa etc)
+2. agreement between him and us, as either alluvial or confusion matrix
+3. sample swaps in Run IDs, but that's really just for my own personal edification - doesn't fit with the paper.
