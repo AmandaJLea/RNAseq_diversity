@@ -31,7 +31,6 @@ So, working with Kasper's data I realised that... they have not cleaned out thin
 
 The first thing we need to do is find equivalent identifiers between our data and theirs. They use DRR something something which does not match our SRA identifiers, but I have faith in my ability to reconcile the two. First we check if the identifiers were in our raw SRA dumps:
 
-
 Ultimately we want to 
 1. clean the data to remove known cell lines like HeLa
 2. compare with a sankey between our calls from meta data and his calls from genotype, including unassigned. 
@@ -69,8 +68,8 @@ It also seems like we can cut down on the number of calls to NCBI by looking at 
 
 ```{r from-bio-project-to-everything-1}
 # Function to get Runs and BioSamples for a BioProject
-# Times out after three minutes because sometimes you just gotta know when to give up. Removed the multiple attempts, I'll just make a list of missing BPs later.
-get_runs_and_biosamples <- function(bp_id) {
+# Times out after five minutes because sometimes you just gotta know when to give up. Removed the multiple attempts, I'll just make a list of missing BPs later and rerun.
+get_runs_and_biosamples <- function(bp_id, timeout=180) {
   result <- tryCatch({
     withTimeout({ 
       # For debugging:
@@ -130,7 +129,7 @@ get_runs_and_biosamples <- function(bp_id) {
       endTime <- Sys.time()
       print(paste0("Finished processing ", bp_id, ". It took ", round(endTime - startTime, 2), " seconds."))
       return(bind_rows(all_results))
-    }, timeout = 180, onTimeout = "error")
+    }, timeout = timeout, onTimeout = "error")
   }, error = function(e) {
     message(paste("Error or timeout for BioProject", bp_id, ":", e$message))
     return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
@@ -144,21 +143,20 @@ get_runs_and_biosamples <- function(bp_id) {
 
 The function has been defined and now let's do a test run with a small number of bioProjects (nb actually not run, just included here for completeness):
 
-```{r from-bioproject-to-everything-2, eval=F}
+```{r from-bioproject-to-everything-2, eval=T}
 # For debugging:
 kasperBPs <- c("DRP000366", "DRP000425", "DRP000499", "DRP000527", "DRP000622", "DRP000665", "DRP000929", "DRP000987", "DRP001048", "DRP001149", "DRP001150", "DRP001194", "DRP001219", "DRP001220", "DRP001280", "DRP001797", "DRP001919", "DRP001953", "DRP002315", "DRP005280") # Has one of the edge cases
 kasperBP <- "DRP000499"
-kasperBPHard <- "DRP005280"
+testBPs <- lapply(kasperBP, get_runs_and_biosamples) # Runs fine, do a real one now
 
-testBPs <- lapply(kasperBP, get_runs_and_biosamples)
-testBPs <- lapply(kasperBPHard, get_runs_and_biosamples)
+testBPs <- lapply(kasperBPs, get_runs_and_biosamples)
 testIDs <- bind_rows(testBPs)
 
-#Let's compare with what he had. First, a left_join
+#Let's compare with what he had. First, an inner_join
 sraToKasper <- inner_join(testIDs, fromKasper, join_by("Run" == "sub_pop"))
-dim(sraToKasper) # That gives 707 
+dim(sraToKasper) # That gives 711 
 
-dim(fromKasper[fromKasper$pop %in% kasperBPs,]) # and that also gives 707... 
+dim(fromKasper[fromKasper$pop %in% kasperBPs,]) # and that also gives 711... 
 
 fromKasperSlim <- fromKasper[fromKasper$pop %in% kasperBPs,]
 
@@ -184,7 +182,7 @@ allSRAFinalKasper %>% filter(pred_pop == "SAS")
 
 Ok this works - took some debugging now. So now let's run the entire set of queries, 100 at a time so it doesn't completely burn down:
 
-```{from-bio-project-to-everything-3}
+```{r from-bio-project-to-everything-3, eval=F}
 
 # Batch processing function
 process_in_batches <- function(bioProjects, batch_size = 100, delay = 1, file_prefix) {
@@ -227,7 +225,53 @@ bpsToGrab <- unique(fromKasper$pop)
 
 # If this fails again we can limit the number of queries to those with more than 10 runs...
 
-allBPs <- process_in_batches(bpsToGrab[8500:8650], batch_size = 10, delay = 1, file_prefix = "post85_")
+allBPs <- process_in_batches(bpsToGrab, batch_size = 25, delay = 1, file_prefix = "all_")
+```
+
+```{r from-bio-project-to-everything-4, eval=F}
+# We read everything in and do a repeat run for everything that failed the first time around (read it in because we are not interested in rerunning the previous bit of code, even by accident)
+
+allBPs <- read.csv("all_bioproject_biosample_runlist.csv", header=T)
+dim(allBPs)
+
+fromKasperCheck <- left_join(fromKasper, allBPs, join_by("sub_pop" == "Run")) %>% filter(is.na(BioSample))
+dim(fromKasperCheck) # That's a lot of missingness... what BPs go with it?
+
+bpsToRepeat <- fromKasperCheck %>% count(pop) # 61 BPs missing some sort of info
+
+repeatBPs <- process_in_batches(bpsToRepeat$pop, batch_size = 25, delay = 1, file_prefix = "repeats_") # Some of these are clearly doomed and return NA, but others may be salvageable?
+
+processedBPs <- bind_rows(allBPs, repeatBPs)
+fromKasperCheck <- left_join(fromKasper, processedBPs, join_by("sub_pop" == "Run")) %>% filter(is.na(BioSample)) 
+dim(fromKasperCheck) # That's a lot of missingness... what BPs go with it?
+
+bpsToThreepeat <- fromKasperCheck %>% count(pop) # Down to 48...
+
+# I believe in third chances! There's two huge ones in there that time out, so we can run those two individually with a longer time out and remove them from bpsToThreepeat so not everyone gets 10 mins before timing out:
+bigBP <- "SRP200058"
+biggerBP <- "SRP166108"
+
+hugeBPs <- c("SRP166108", "SRP200058")
+
+bpsToThreepeat <- bpsToThreepeat[!bpsToThreepeat$pop %in% hugeBPs,]
+
+bigBPout <- get_runs_and_biosamples(bigBP, timeout = 300)
+biggerBPout <- get_runs_and_biosamples(biggerBP, timeout = 600)
+
+threepeatBPs <- process_in_batches(bpsToThreepeat$pop, batch_size = 25, delay = 1, file_prefix = "threepeats_")
+
+processedBPs <- bind_rows(processedBPs, bigBPout)
+processedBPs <- bind_rows(processedBPs, biggerBPout)
+processedBPs <- bind_rows(processedBPs, threepeatBPs)
+fromKasperCheck <- left_join(fromKasper, processedBPs, join_by("sub_pop" == "Run")) %>% filter(is.na(BioSample)) 
+dim(fromKasperCheck) # From repeating things it really seems like some just fail out of spite, really, so there's no value in re-running things - we rescued most of the missing IDs.
+
+processedBPs <- processedBPs %>% distinct(Run, .keep_all = TRUE)
+dim(processedBPs)
+write.csv(processedBPs, file="final_bioproject_biosample_runlist.csv", quote=F, row.names=F)
+
+# And just so no one complains, here's what is missing:
+fromKasperCheck %>% count(pred_pop)
 ```
 
 If I was feeling devious I would check:
@@ -235,19 +279,3 @@ If I was feeling devious I would check:
 1. diversity in his data, after cleaning it down to biosample, 10 samples per study, and removing obvious cell lines (HeLa etc)
 2. agreement between him and us, as either alluvial or confusion matrix - this can also lead to point 3 below.
 3. sample swaps in Run IDs, but that's really just for my own personal edification - doesn't fit with the paper.
-
-```{r bioproject-to-our-data-1}
-kasperComplete <- inner_join(fromKasper, allBPs, join_by("sub_pop" == "Run"))
-allSRAFinalKasper <- inner_join(allSRAFinal, kasperComplete, join_by("BioSample" == "BioSample"))
-
-dim(allSRAFinalKasper) 
-
-# But that's too many rows because we're operating at the Run level rather than the BioSample level, so let's clean that mess up:
-allSRAFinalKasper <- allSRAFinalKasper %>% distinct(BioSample, .keep_all=TRUE)
-dim(allSRAFinalKasper)
-
-# Can't help it I wanna tabulate already:
-allSRAFinalKasper %>% count(pred_pop, strictestGeography)
-allSRAFinalKasper %>% count(pred_pop, strictestRace)
-allSRAFinalKasper %>% filter(pred_pop == "SAS")
-```
