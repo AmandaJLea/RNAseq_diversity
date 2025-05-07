@@ -1,5 +1,5 @@
 ---
-title: "Merging the PCA with our calls"
+title: "Merging the PCA with our calls, part 1"
 layout: "post"
 tags: "diversity"
 output: html_document
