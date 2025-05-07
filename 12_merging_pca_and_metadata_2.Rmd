@@ -1,0 +1,306 @@
+---
+title: "Merging the PCA with our calls, part 2"
+layout: "post"
+tags: "diversity"
+output: html_document
+date: "2025-05-07"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(viridis)
+library(tidyverse)
+library(patchwork)
+library(ggalluvial)
+library(RColorBrewer)
+library(ggrepel)
+library(viridis)
+library(thematic)
+library(scattermore)
+library(tidyverse)
+
+options(device = "quartz")
+```
+
+Now that we have finished doing the programmatic grabbing from NCBI, let's do the analyses we want on the two datasets combined. The things we want to do are:
+
+1. diversity in his data, after cleaning it down to biosample, 10 samples per study, and removing obvious cell lines (HeLa etc)
+2. agreement between him and us, as either alluvial or confusion matrix - this can also lead to point 3 below.
+3. sample swaps in Run IDs, but that's really just for my own personal edification - doesn't fit with the paper.
+
+So let's start with 1, even though it's annoying. These are big files, so let's load them in as quickly as we need to and then throw them out... at least we know what columns we want to keep, this time around. We remove studies with fewer than 10 biosamples, and studies that are not transcriptomic in source, and then we merge with Kasper (gotta understand his exclusion criteria better)
+
+```{r read-in-original-data}
+
+old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
+new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
+
+names(new)[8] <- "Cell_line"
+
+allSRA <- rbind.fill(old, new)
+dim(allSRA)
+allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+# allSRA <- unique(allSRA) # This is from Amanda, I do distinct below instead.
+dim(allSRA) # Yep that cleaned things up
+
+allSRAcounts <- as.data.frame(table(allSRA$SRA.Study))
+keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
+allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$Var1,]
+dim(allSRAFilt) # Most of them stick around... 
+
+# So now we finally clean up to one row per biosample...
+allSRAClean <- allSRAFilt %>% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAClean)
+
+# A bit of tidying up to free up some memory etc...
+rm(allSRA, allSRAFilt, allSRAcounts)
+```
+
+And now we read in Kasper's file, my SRA dump and merge:
+
+```{r merge-with-kasper}
+fromKasper <- read.csv("from_Kasper_suppTable3.csv", header=T)
+bioSampleMappings <- read.csv("bioproject_biosample_runlist_to_66.csv", header=T)
+
+fromKasper <- left_join(fromKasper, bioSampleMappings, join_by("sub_pop" == "Run"))
+dim(fromKasper)
+head(fromKasper)
+
+# TO ADD - CHECK THOSE MERGES WHEN DONE WITH THE SRA GRABBING!!!
+# Check those merges:
+
+
+allSRAClean <- inner_join(allSRAClean, fromKasper, join_by("BioSample" == "BioSample"))
+dim(allSRAClean)
+
+# Not bad... if we do the PCA and the tallying at this point, what does it look like? 
+fromKasper %>% count(pred_pop)
+allSRAClean %>% count(pred_pop)
+
+allSRAClean %>% count(is.na(Cell_line))
+popularCellLines <- allSRAClean %>% count(Cell_line, sort=T) 
+dim(popularCellLines)
+
+popularCellTypes <- allSRAClean %>% count(Cell_type, sort=T) 
+dim(popularCellTypes)
+
+head(popularCellLines, n=200)
+head(popularCellTypes, n=200)
+
+allSRAClean <- allSRAClean[is.na(allSRAClean$Cell_line),]
+dim(allSRAClean)
+allSRAClean %>% count(pred_pop)
+```
+
+From a quick look at this, it seems like most people do a decent job of filling in the cell type and cell line categories, so we'll go for the savage approach: drop everything in Kasper's file with a cell_line annotation and say that's as close as we can get to matching our far more detailed clean up. 
+
+First we get ready to plot by defining some colour schemes, and then we need to do some mappings between them and us, so might as well read in allSRAFinal because that's what we need downstream anyhow. 
+
+```{r prepare-to-plot}
+allSRAFinal <- readRDS("20240901_allSRAFinal_for_plotting.rds")
+
+scale_fill_geography <- function(...){
+    ggplot2:::manual_scale('fill',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
+    )
+}
+
+scale_color_geography <- function(...){
+    ggplot2:::manual_scale('color',  
+        values = setNames(c('#9C8DC3', '#F3D78A', '#DB6968', '#60BC55', '#BCCC45', '#4D97CD', '#04C3C8', '#C69C3A', '#F8984E', '#8B96AD', '#FBC9C4'), levels(allSRAFinal$strictestGeography)), 
+    )
+}
+
+# And now the fill scales for Kasper, which are basically ours, but smaller - we gotta reorder his factor levels so they match well:
+allSRAClean$pred_pop <- factor(allSRAClean$pred_pop, levels = c("AFR", "EUR", "SAS", "EAS", "AMR", "")) 
+
+# NA is grey50
+scale_fill_kasper <- function(...){
+    ggplot2:::manual_scale('fill',  
+        values = setNames(c('#9C8DC3', '#DB6968', '#60BC55', '#4D97CD', '#F8984E', 'grey50'), levels(allSRAClean$pred_pop)), 
+    )
+}
+
+scale_color_kasper <- function(...){
+    ggplot2:::manual_scale('color',  
+        values = setNames(c('#9C8DC3', '#DB6968', '#60BC55', '#4D97CD', '#F8984E', 'grey50'), levels(allSRAClean$pred_pop)), 
+    )
+}
+
+theme_set(theme_bw(base_size = 6))
+theme_update(axis.text=element_text(size=7))
+theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
+        legend.title = element_text(size=8), #change legend title font size
+        legend.text = element_text(size=6),
+        plot.title = element_text(size=8))
+theme_update(plot.margin = unit(c(2, 2, 2, 2), "pt"))
+
+# We also define a couple of plot layouts:
+fourDesign <- "
+  12
+  34
+"
+```
+
+Now we can finish poking around and do the actual plotting, and eventually merge this with other figure drafts. 
+
+```{r plot-clean-data}
+kasperProp <- allSRAClean %>% count(pred_pop) %>% mutate(freq = n/sum(n))
+geographyProp <- allSRAFinal %>% drop_na(strictestGeography) %>% count(strictestGeography) %>% mutate(freq = n/sum(n))
+
+kasperPlot <- ggplot(kasperProp, aes(x = fct_inorder(pred_pop), y = n, fill = pred_pop)) +
+  geom_bar(stat="identity") +
+  ggtitle("Inferred genetic superpopulation\n(Razi et al, 2024)") +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_flip() +
+  scale_fill_kasper() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1)) 
+
+kasperPlot
+
+geoPlot <- ggplot(geographyProp, aes(x = fct_inorder(strictestGeography), y = n, fill = strictestGeography)) +
+  geom_bar(stat="identity") +
+  ggtitle("Submitted SRA descriptor\n(ancestral/geographic origin)") +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_flip() +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1))
+
+geoPlot + kasperPlot +
+  # plot_layout(design = long6Design, tag_level = 'new') +
+    plot_annotation(tag_levels = 'A') 
+
+ggsave("kasper_filtered_sra_by_region.pdf", height=3, width=6)
+ggsave("kasper_filtered_sra_by_region.png", height=3, width=6)
+
+# We also plot the PCA 
+kasperPCA <- ggplot(allSRAClean, aes(x = pc1, y = pc2, color=pred_pop )) +
+  ggtitle(paste0("Genotype PCA (Razi et al, 2024)\n(n = ", nrow(allSRAClean), " samples)")) +
+  geom_point(alpha = 0.5, size = 0.5) +
+  ylab("PC2") +
+  xlab("PC1") +
+  theme(plot.title = element_text(hjust = 1)) +
+  scale_color_kasper() +
+  labs(color="Predicted\nSuperpopulation") +
+  theme(legend.position = "none")
+  # theme(legend.title.align = 1, legend.position = c(0.1,0.8), legend.background=element_blank()) +
+  # theme(aspect.ratio=1)
+
+kasperPCA
+
+geoPlot + kasperPlot + kasperPCA +
+  # plot_layout(design = long6Design, tag_level = 'new') +
+    plot_annotation(tag_levels = 'A') 
+
+ggsave("kasper_filtered_sra_pca_by_region.pdf", height=3, width=6)
+ggsave("kasper_filtered_sra_pca_by_region.png", height=3, width=6)
+
+kasperPlot + kasperPCA +
+  # plot_layout(design = long6Design, tag_level = 'new') +
+    plot_annotation(tag_levels = 'A') 
+
+ggsave("kasper_filtered_pca_by_region.pdf", height=3, width=6)
+ggsave("kasper_filtered_pca_by_region.png", height=3, width=6)
+
+    
+# Finally, we can look at proportions instead of whole values to compare between the two datasets, similar to the final figure in the paper
+# To combine we need to relabel the kasperProp values so we can merge:
+kasperProp <- kasperProp %>% 
+  mutate(pred_pop = gsub("AFR", "Sub-Saharan Africa", pred_pop)) %>%
+  mutate(pred_pop = gsub("AMR", "Americas", pred_pop)) %>%
+  mutate(pred_pop = gsub("EUR", "Europe", pred_pop)) %>%
+  mutate(pred_pop = gsub("SAS", "South Asia", pred_pop)) %>%
+  mutate(pred_pop = gsub("EAS", "East Asia", pred_pop)) %>%
+  as.data.frame()
+
+# Fix the stupid NA (will this go away when the run is done?):
+kasperProp[6,1] <- "Other"
+
+# Do a long join, but artisanal:
+names(kasperProp)[1] <- "strictestGeography"
+
+allProp <- bind_rows(lst(geographyProp, kasperProp), .id='id')
+
+proportional <- ggplot(allProp, aes(fill=strictestGeography, y=freq, x=id)) + 
+  geom_bar(position="fill", stat="identity")+
+  # theme_bw(13)+
+  ggtitle("") +
+  ylab('Proportion of samples')+
+  xlab('')+
+  scale_fill_geography() +
+  coord_flip() + 
+  scale_y_continuous(breaks=c(0,0.5,1)) +
+  guides(fill=guide_legend(title="", label.position="left", nrow=2)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
+
+proportional
+  ggsave("kasper_filtered_sra_proportions.pdf", height=4, width=4)
+  ggsave("kasper_filtered_sra_proportions.png", height=4, width=4)
+```
+
+And now we can finally filter to our cleaned SRA dataset...
+
+```{r merge-sra-annot-kasper}
+allSRAFinal <- left_join(allSRAFinal, fromKasper, join_by("BioSample" == "BioSample"))
+
+# Let's check the quality of this merger... seems like it is not working so well!
+allSRAFinal[allSRAFinal$BioProject != allSRAFinal$SRA.Study,]
+allSRAFinal %>% count(allSRAFinal$pred_pop)
+
+allSRAMergeFail <- allSRAFinal[is.na(allSRAFinal$BioProject),]
+allSRAMergeFail %>% count(allSRAMergeFail$SRA.Study)
+
+# Yiiiiiiiiiiiiikes not great!!!
+
+fromKasper[fromKasper$pop %in% "SRP116913",]
+
+
+
+# Let's collapse tissues with under 100 observations and diseases with under 10 into "Other"
+geoTissuesToKeep <- allSRAFinal %>% drop_na(strictestGeography) %>% count(finalOrgan) %>% filter(n >= 100)
+raceTissuesToKeep <- allSRAFinal %>% drop_na(strictestRace) %>% count(finalOrgan) %>% filter(n >= 100)
+
+geoDiseasesToKeep <- allSRAFinal %>% drop_na(strictestGeography) %>% count(finalDisease) %>% filter(n >= 10)
+raceDiseasesToKeep <- allSRAFinal %>% drop_na(strictestRace) %>% count(finalDisease) %>% filter(n >= 10)
+
+geoDisAlluvial <- allSRAFinal %>% drop_na(c(strictestGeography, worldRegion, finalOrgan, finalDisease)) %>% count(worldRegion, strictestGeography, finalOrgan, finalDisease) %>%
+filter(grepl(paste(geoTissuesToKeep$finalOrgan, collapse="|"), finalOrgan)) %>%  
+filter(grepl(paste(geoDiseasesToKeep$finalDisease, collapse="|"), finalDisease)) %>%  
+    ggplot(data = .,
+       aes(axis1 = worldRegion, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
+  scale_x_discrete(limits = c("SRA Submitter\nWBER", "Disease class", "Tissue sequenced"), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = strictestGeography)) +
+  scale_fill_geography() +
+  geom_stratum(width=1/4) +
+  ylab("Samples") +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
+  theme_minimal(base_size = 6) +
+  guides(fill=guide_legend(title="Descriptor", nrow=2)) +
+  theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
+
+
+```
+
+
+
+
+
+
+
+
+
