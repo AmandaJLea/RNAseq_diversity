@@ -22,6 +22,7 @@ library(viridis)
 library(rentrez)
 library(tidyverse)
 library(xml2)
+library(R.utils)
 
 options(device = "quartz")
 ```
@@ -68,17 +69,18 @@ It also seems like we can cut down on the number of calls to NCBI by looking at 
 
 ```{r from-bio-project-to-everything-1}
 # Function to get Runs and BioSamples for a BioProject
-get_runs_and_biosamples <- function(bp_id, max_retries = 3) {
-  attempt <- 1
-  while (attempt <= max_retries) {
-    tryCatch({
+# Times out after three minutes because sometimes you just gotta know when to give up. Removed the multiple attempts, I'll just make a list of missing BPs later.
+get_runs_and_biosamples <- function(bp_id) {
+  result <- tryCatch({
+    withTimeout({ 
+      # For debugging:
+      startTime <- Sys.time()
+      print(paste0("Now processing ", bp_id))
+
       # Let's not get banned from NCBI... they say less than 3 queries per second, so... 
       Sys.sleep(1)
-      
-      # For debugging only:
-      print(paste0("Now processing ", bp_id))
-      
-      # Search for BioProject in SRA (search with web history)
+
+      # Search for BioProject in SRA (with web history)
       search_res <- entrez_search(db = "sra", term = paste0(bp_id, "[BioProject] AND TRANSCRIPTOMIC[Src]"), use_history = TRUE, retmax = 2000)
     
       if (length(search_res$ids) == 0) {
@@ -125,30 +127,18 @@ get_runs_and_biosamples <- function(bp_id, max_retries = 3) {
       }
     
       # Combine results from all batches
+      endTime <- Sys.time()
+      print(paste0("Finished processing ", bp_id, ". It took ", round(endTime - startTime, 2), " seconds."))
       return(bind_rows(all_results))
-  
-    }, error = function(e) {
-      message(paste("Error processing BioProject", bp_id, "on attempt", attempt, ":", e$message))
-  
-    # Retry if it's not the last attempt
-    if (attempt < max_retries) {
-      attempt <- attempt + 1
-      message("Retrying... Attempt ", attempt)
-      Sys.sleep(1)  # Sleep between retries
-    } else {
-    # After max retries, return NA to indicate failure
-      message("Max retries reached. Skipping this BioProject.")
-      return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
-    }
-  }
-    )
+    }, timeout = 180, onTimeout = "error")
+  }, error = function(e) {
+    message(paste("Error or timeout for BioProject", bp_id, ":", e$message))
+    return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
+  })
 
-    # If successfully retrieved data, return it
-    if (exists("all_results")) {
-  return(bind_rows(all_results))
-  }
-  }
+  return(result)
 }
+
 
 ```
 
@@ -160,6 +150,7 @@ kasperBPs <- c("DRP000366", "DRP000425", "DRP000499", "DRP000527", "DRP000622", 
 kasperBP <- "DRP000499"
 kasperBPHard <- "DRP005280"
 
+testBPs <- lapply(kasperBP, get_runs_and_biosamples)
 testBPs <- lapply(kasperBPHard, get_runs_and_biosamples)
 testIDs <- bind_rows(testBPs)
 
@@ -236,7 +227,7 @@ bpsToGrab <- unique(fromKasper$pop)
 
 # If this fails again we can limit the number of queries to those with more than 10 runs...
 
-allBPs <- process_in_batches(bpsToGrab[8000:8650], batch_size = 100, delay = 1, file_prefix = "post80")
+allBPs <- process_in_batches(bpsToGrab[8500:8650], batch_size = 10, delay = 1, file_prefix = "post85_")
 ```
 
 If I was feeling devious I would check:
