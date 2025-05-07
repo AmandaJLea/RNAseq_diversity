@@ -39,7 +39,6 @@ Now that we have finished doing the programmatic grabbing from NCBI, let's do th
 So let's start with 1, even though it's annoying. These are big files, so let's load them in as quickly as we need to and then throw them out... at least we know what columns we want to keep, this time around. We remove studies with fewer than 10 biosamples, and studies that are not transcriptomic in source, and then we merge with Kasper (gotta understand his exclusion criteria better)
 
 ```{r read-in-original-data}
-
 old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
 new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
 
@@ -64,22 +63,41 @@ dim(allSRAClean)
 rm(allSRA, allSRAFilt, allSRAcounts)
 ```
 
-And now we read in Kasper's file, my SRA dump and merge:
+And now we read in Kasper's file, my SRA dump and merge, sanity checking the missingness in the data because otherwise it's all quite yikes:
 
 ```{r merge-with-kasper}
-fromKasper <- read.csv("from_Kasper_suppTable3.csv", header=T)
-bioSampleMappings <- read.csv("bioproject_biosample_runlist_to_66.csv", header=T)
+fromKasperBase <- read.csv("from_Kasper_suppTable3.csv", header=T)
+bioSampleMappings <- read.csv("bioproject_biosample_runlist_working.csv", header=T)
 
-fromKasper <- left_join(fromKasper, bioSampleMappings, join_by("sub_pop" == "Run"))
+# While R is geting its act together we need to do some manual concatenation in the shell:
+# ( cat bioproject_biosample_runlist_to_66.csv ; tail -n +2 bioproject_biosample_runlist.csv ) >> bioproject_biosample_runlist_working.csv
+
+dim(fromKasperBase)
+head(fromKasperBase)
+dim(bioSampleMappings)
+head(bioSampleMappings)
+
+# Catching the annoying NAs so we can drop them whenever we need to. 
+fromKasperBase <- fromKasperBase %>%
+  mutate(pred_pop = na_if(pred_pop, "")) %>%
+  filter(!is.na(pred_pop))
+
+# This can be an inner join now so we can sanity check... but we're clearly pulling a lot of IDs that are not included in recount, but are associated with the same project and are still transcriptomic somehow. It is above my pay grade to work out why. 
+fromKasper <-inner_join(fromKasperBase, bioSampleMappings, join_by("sub_pop" == "Run")) # Currently missing 100k rows
 dim(fromKasper)
 head(fromKasper)
 
-# TO ADD - CHECK THOSE MERGES WHEN DONE WITH THE SRA GRABBING!!!
-# Check those merges:
+# But this was at the run level, we gotta get down to the BioSample level...
+length(unique(fromKasper$BioSample))
+fromKasper <- fromKasper %>% distinct(BioSample, .keep_all=TRUE)
+dim(fromKasper) #That's better
 
-
+# Now we merge with allSRAClean to check some stuff...
+dim(allSRAClean)
 allSRAClean <- inner_join(allSRAClean, fromKasper, join_by("BioSample" == "BioSample"))
 dim(allSRAClean)
+
+nrow(allSRAClean) / nrow(fromKasper) # 92% of the Kasper rows were in our data, so that's a start
 
 # Not bad... if we do the PCA and the tallying at this point, what does it look like? 
 fromKasper %>% count(pred_pop)
@@ -92,17 +110,20 @@ dim(popularCellLines)
 popularCellTypes <- allSRAClean %>% count(Cell_type, sort=T) 
 dim(popularCellTypes)
 
-head(popularCellLines, n=200)
-head(popularCellTypes, n=200)
+# head(popularCellLines, n=200)
+# head(popularCellTypes, n=200)
 
-allSRAClean <- allSRAClean[is.na(allSRAClean$Cell_line),]
-dim(allSRAClean)
-allSRAClean %>% count(pred_pop)
+# Let's clean up, then - and also get rid of all the samples without a genotype prediction from their data
+allSRAClean <- allSRAClean %>% 
+  filter(is.na(Cell_line)) %>%
+  filter(!is.na(pred_pop))
+dim(allSRAClean) # This is the final number that match with some sort of population label.
+allSRAClean %>% count(pred_pop) # And these are the pop numbers
 ```
 
 From a quick look at this, it seems like most people do a decent job of filling in the cell type and cell line categories, so we'll go for the savage approach: drop everything in Kasper's file with a cell_line annotation and say that's as close as we can get to matching our far more detailed clean up. 
 
-First we get ready to plot by defining some colour schemes, and then we need to do some mappings between them and us, so might as well read in allSRAFinal because that's what we need downstream anyhow. 
+First we get ready to plot by defining some colour schemes, and then we need to do some mappings between them and us, so might as well read in allSRAFinal because that's what we need downstream anyhow and I forgot the colour levels. 
 
 ```{r prepare-to-plot}
 allSRAFinal <- readRDS("20240901_allSRAFinal_for_plotting.rds")
@@ -135,6 +156,22 @@ scale_color_kasper <- function(...){
     )
 }
 
+
+raceColours <- brewer.pal(8,"Set2") #8 because we don't plot NAs
+
+scale_color_race <- function(...){
+    ggplot2:::manual_scale('color', 
+                           values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
+    )
+}
+
+scale_fill_race <- function(...){
+    ggplot2:::manual_scale('fill', 
+        values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
+    )
+}
+
+
 theme_set(theme_bw(base_size = 6))
 theme_update(axis.text=element_text(size=7))
 theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
@@ -144,9 +181,10 @@ theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
 theme_update(plot.margin = unit(c(2, 2, 2, 2), "pt"))
 
 # We also define a couple of plot layouts:
-fourDesign <- "
-  12
-  34
+long3Design <- "
+  1
+  2
+  3
 "
 ```
 
@@ -154,7 +192,6 @@ Now we can finish poking around and do the actual plotting, and eventually merge
 
 ```{r plot-clean-data}
 kasperProp <- allSRAClean %>% count(pred_pop) %>% mutate(freq = n/sum(n))
-geographyProp <- allSRAFinal %>% drop_na(strictestGeography) %>% count(strictestGeography) %>% mutate(freq = n/sum(n))
 
 kasperPlot <- ggplot(kasperProp, aes(x = fct_inorder(pred_pop), y = n, fill = pred_pop)) +
   geom_bar(stat="identity") +
@@ -168,24 +205,8 @@ kasperPlot <- ggplot(kasperProp, aes(x = fct_inorder(pred_pop), y = n, fill = pr
   theme(plot.title = element_text(hjust = 1)) 
 
 kasperPlot
-
-geoPlot <- ggplot(geographyProp, aes(x = fct_inorder(strictestGeography), y = n, fill = strictestGeography)) +
-  geom_bar(stat="identity") +
-  ggtitle("Submitted SRA descriptor\n(ancestral/geographic origin)") +
-  xlab(NULL) +
-  ylab(NULL) +
-  coord_flip() +
-  scale_fill_geography() +
-  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  theme(legend.position="none") +
-  theme(plot.title = element_text(hjust = 1))
-
-geoPlot + kasperPlot +
-  # plot_layout(design = long6Design, tag_level = 'new') +
-    plot_annotation(tag_levels = 'A') 
-
-ggsave("kasper_filtered_sra_by_region.pdf", height=3, width=6)
-ggsave("kasper_filtered_sra_by_region.png", height=3, width=6)
+ggsave("kasper_filtered_allsra_by_region.pdf", height=3, width=6)
+ggsave("kasper_filtered_allsra_by_region.png", height=3, width=6)
 
 # We also plot the PCA 
 kasperPCA <- ggplot(allSRAClean, aes(x = pc1, y = pc2, color=pred_pop )) +
@@ -202,87 +223,97 @@ kasperPCA <- ggplot(allSRAClean, aes(x = pc1, y = pc2, color=pred_pop )) +
 
 kasperPCA
 
-geoPlot + kasperPlot + kasperPCA +
-  # plot_layout(design = long6Design, tag_level = 'new') +
-    plot_annotation(tag_levels = 'A') 
-
-ggsave("kasper_filtered_sra_pca_by_region.pdf", height=3, width=6)
-ggsave("kasper_filtered_sra_pca_by_region.png", height=3, width=6)
-
 kasperPlot + kasperPCA +
   # plot_layout(design = long6Design, tag_level = 'new') +
     plot_annotation(tag_levels = 'A') 
 
 ggsave("kasper_filtered_pca_by_region.pdf", height=3, width=6)
 ggsave("kasper_filtered_pca_by_region.png", height=3, width=6)
-
-    
-# Finally, we can look at proportions instead of whole values to compare between the two datasets, similar to the final figure in the paper
-# To combine we need to relabel the kasperProp values so we can merge:
-kasperProp <- kasperProp %>% 
-  mutate(pred_pop = gsub("AFR", "Sub-Saharan Africa", pred_pop)) %>%
-  mutate(pred_pop = gsub("AMR", "Americas", pred_pop)) %>%
-  mutate(pred_pop = gsub("EUR", "Europe", pred_pop)) %>%
-  mutate(pred_pop = gsub("SAS", "South Asia", pred_pop)) %>%
-  mutate(pred_pop = gsub("EAS", "East Asia", pred_pop)) %>%
-  as.data.frame()
-
-# Fix the stupid NA (will this go away when the run is done?):
-kasperProp[6,1] <- "Other"
-
-# Do a long join, but artisanal:
-names(kasperProp)[1] <- "strictestGeography"
-
-allProp <- bind_rows(lst(geographyProp, kasperProp), .id='id')
-
-proportional <- ggplot(allProp, aes(fill=strictestGeography, y=freq, x=id)) + 
-  geom_bar(position="fill", stat="identity")+
-  # theme_bw(13)+
-  ggtitle("") +
-  ylab('Proportion of samples')+
-  xlab('')+
-  scale_fill_geography() +
-  coord_flip() + 
-  scale_y_continuous(breaks=c(0,0.5,1)) +
-  guides(fill=guide_legend(title="", label.position="left", nrow=2)) +
-  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
-
-proportional
-  ggsave("kasper_filtered_sra_proportions.pdf", height=4, width=4)
-  ggsave("kasper_filtered_sra_proportions.png", height=4, width=4)
 ```
 
-And now we can finally filter to our cleaned SRA dataset...
+And now we can start intersecting with our cleaned SRA dataset from the paper...
 
 ```{r merge-sra-annot-kasper}
-allSRAFinal <- left_join(allSRAFinal, fromKasper, join_by("BioSample" == "BioSample"))
+allSRAFinalPC <- left_join(allSRAFinal, fromKasper, join_by("BioSample" == "BioSample"))
 
-# Let's check the quality of this merger... seems like it is not working so well!
-allSRAFinal[allSRAFinal$BioProject != allSRAFinal$SRA.Study,]
-allSRAFinal %>% count(allSRAFinal$pred_pop)
+# Check the merges again:
+dim(allSRAFinal)
+dim(allSRAFinalPC)
+dim(fromKasper)
 
-allSRAMergeFail <- allSRAFinal[is.na(allSRAFinal$BioProject),]
-allSRAMergeFail %>% count(allSRAMergeFail$SRA.Study)
+# Let's check the quality of this merger... 
+allSRAFinalPC %>% drop_na(BioProject) %>% nrow() # So much missing data... only 5k samples are in common in both datasets right now
+allSRAFinalPC %>% drop_na(BioProject) %>% count(BioProject) %>% nrow()
 
-# Yiiiiiiiiiiiiikes not great!!!
+# Are any of these incomplete?
+mergedBPs <- allSRAFinalPC %>% drop_na(BioProject) %>% count(BioProject)
+sraBPs <- allSRAFinalPC %>% count(SRA.Study)
 
-fromKasper[fromKasper$pop %in% "SRP116913",]
+bpChecks <- inner_join(mergedBPs, sraBPs, join_by("BioProject" == "SRA.Study"))
+bpChecks %>% mutate(diff = n.y - n.x) # Mostly equal, but some weird missingness in some cases... Let's see how/if that changes when we get it to grab the complete datasets.
 
+allSRAFinalPC %>% drop_na(BioProject) %>% count(SRA.Study == BioProject) # Only three mismatches, tho... 
+allSRAFinalPC %>% drop_na(BioProject) %>% filter(SRA.Study != BioProject) # Terrifying. Checked them manually and they line up at the BioSample level and everything was deposited by Sanger (and they both have an PREJ Bioproject instead), but still, wtf?
+                         
+# How many of these are just pending?
+recountBPs <- unique(fromKasperBase$pop)
+processedBPs <- unique(bioSampleMappings$BioProject)
+SRABPs <- unique(allSRAFinal$SRA.Study)
 
+length(recountBPs)
+length(processedBPs)
+length(SRABPs)
 
-# Let's collapse tissues with under 100 observations and diseases with under 10 into "Other"
-geoTissuesToKeep <- allSRAFinal %>% drop_na(strictestGeography) %>% count(finalOrgan) %>% filter(n >= 100)
-raceTissuesToKeep <- allSRAFinal %>% drop_na(strictestRace) %>% count(finalOrgan) %>% filter(n >= 100)
+table(SRABPs %in% recountBPs) # So we only have 94 studies in common with recount, not the full complement. Of course not. 
+table(SRABPs %in% processedBPs) # And we're just waiting for this to get better...
+```
 
-geoDiseasesToKeep <- allSRAFinal %>% drop_na(strictestGeography) %>% count(finalDisease) %>% filter(n >= 10)
-raceDiseasesToKeep <- allSRAFinal %>% drop_na(strictestRace) %>% count(finalDisease) %>% filter(n >= 10)
+Ok fine this could be better but that's what we have, and so it is what we will carry forward. The number of overlaps is not going to improve much, so let's just do the analyses. Maybe we'll start easy and ask, does having usable metadata change proportions of samples relative to the entire dataset?
 
-geoDisAlluvial <- allSRAFinal %>% drop_na(c(strictestGeography, worldRegion, finalOrgan, finalDisease)) %>% count(worldRegion, strictestGeography, finalOrgan, finalDisease) %>%
-filter(grepl(paste(geoTissuesToKeep$finalOrgan, collapse="|"), finalOrgan)) %>%  
-filter(grepl(paste(geoDiseasesToKeep$finalDisease, collapse="|"), finalDisease)) %>%  
-    ggplot(data = .,
-       aes(axis1 = worldRegion, axis2 = finalOrgan, axis3 = finalDisease, y = n)) +
-  scale_x_discrete(limits = c("SRA Submitter\nWBER", "Disease class", "Tissue sequenced"), expand = c(.2, .05)) +
+```{r merge-sra-annot-kasper-2}
+# First we explore the merge a little bit. This was a left join, so lots of pred_pop with NA, let's filter those out for tallying, because it's kind of unfair otherwise:
+allSRAFinalPC %>% drop_na(BioProject) %>% count(strictestGeography)
+allSRAFinalPC %>% drop_na(BioProject) %>% count(strictestRace)
+allSRAFinalPC %>% drop_na(BioProject) %>% count(pred_pop) # Drop those without a label
+
+allSRAFinalPC %>% drop_na(BioProject) %>% filter(!grepl("[A-Z]", pred_pop))
+
+# Some confusion... that AMR category means what anyhow??? It's absolutely pointless at the genetics level, unless I've fucked something up above? 
+allSRAFinalPC %>% drop_na(BioProject) %>% drop_na(strictestGeography) %>% count(strictestGeography, pred_pop)
+allSRAFinalPC %>% drop_na(BioProject) %>% drop_na(strictestRace) %>% count(strictestRace, pred_pop)
+
+# Anyhow let's answer the question
+descriptorPredPop <- allSRAFinalPC %>% drop_na(BioProject) %>% count(pred_pop) %>% mutate(freq = n/sum(n)) %>% arrange()
+allSRAPredPop <- allSRAClean %>% drop_na(BioProject) %>% count(pred_pop) %>% mutate(freq = n/sum(n)) %>% arrange(as.character(pred_pop))
+
+onion <- chisq.test(cbind(descriptorPredPop$n, allSRAPredPop$n)) # The difference is significant, but how significant, and in what direction?
+onion
+# For checking
+onion$expected
+onion$observed
+
+allPreds <- bind_rows(lst(descriptorPredPop, allSRAPredPop), .id='id') %>% 
+  mutate(id = gsub("descriptorPredPop", "Has geographic\ndescriptor", id)) %>%
+  mutate(id = gsub("allSRAPredPop", "All SRA samples", id))
+
+descriptorFreqs <- ggplot(allPreds, aes(x=id, y=freq, fill=pred_pop)) +
+  geom_bar(position="fill", stat="identity")+
+    # theme_bw(13)+
+    ggtitle("") +
+    ylab('Proportion of samples')+
+    xlab('Has metadata descriptor')+
+    scale_fill_kasper() +
+    scale_y_continuous(breaks=c(0,0.5,1)) +
+    guides(fill=guide_legend(title="", label.position="left", nrow=2)) +
+    theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom", legend.title=element_blank())
+
+descriptorFreqs
+
+# And now... an alluvial plot god give me strength
+geoPCAAlluvial <- allSRAFinalPC %>% drop_na(c(strictestGeography)) %>% count(strictestGeography, pred_pop) %>%
+  ggplot(data = .,
+       aes(axis2 = strictestGeography, axis1 = pred_pop, y = n)) +
+  scale_x_discrete(limits = rev(c("Reported geographic descriptor", "Predicted superpop")), expand = c(.2, .05)) +
   geom_alluvium(aes(fill = strictestGeography)) +
   scale_fill_geography() +
   geom_stratum(width=1/4) +
@@ -293,14 +324,119 @@ filter(grepl(paste(geoDiseasesToKeep$finalDisease, collapse="|"), finalDisease))
   guides(fill=guide_legend(title="Descriptor", nrow=2)) +
   theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
 
+geoPCAAlluvial
 
+geoPCAAlluvialSlim <- allSRAFinalPC %>% drop_na(c(strictestGeography, pred_pop)) %>% count(strictestGeography, pred_pop) %>%
+  ggplot(data = .,
+       aes(axis2 = strictestGeography, axis1 = pred_pop, y = n)) +
+  scale_x_discrete(limits = rev(c("Reported geographic descriptor", "Predicted superpop")), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = strictestGeography)) +
+  scale_fill_geography() +
+  geom_stratum(width=1/4) +
+  ylab("Samples") +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
+  theme_minimal(base_size = 6) +
+  guides(fill=guide_legend(title="Descriptor", nrow=2)) +
+  theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
+
+geoPCAAlluvialSlim
+
+# These are very hard to interpret so just making them to sanity check things
+racePCAAlluvial <- allSRAFinalPC %>% drop_na(c(strictestRace)) %>% count(strictestRace, pred_pop) %>%
+  ggplot(data = .,
+       aes(axis2 = strictestRace, axis1 = pred_pop, y = n)) +
+  scale_x_discrete(limits = rev(c("Reported racial descriptor", "Predicted superpop")), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = strictestRace)) +
+  scale_fill_race() +
+  geom_stratum(width=1/4) +
+  ylab("Samples") +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
+  theme_minimal(base_size = 6) +
+  guides(fill=guide_legend(title="Descriptor", nrow=2)) +
+  theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
+
+racePCAAlluvial
+
+racePCAAlluvialSlim <- allSRAFinalPC %>% drop_na(c(strictestRace, pred_pop)) %>% count(strictestRace, pred_pop) %>%
+  ggplot(data = .,
+       aes(axis2 = strictestRace, axis1 = pred_pop, y = n)) +
+  scale_x_discrete(limits = rev(c("Reported racial descriptor", "Predicted superpop")), expand = c(.2, .05)) +
+  geom_alluvium(aes(fill = strictestRace)) +
+  scale_fill_race() +
+  geom_stratum(width=1/4) +
+  ylab("Samples") +
+  # geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+  geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), size = 2.5, direction = "y", nudge_x = .5) +
+  theme_minimal(base_size = 6) +
+  guides(fill=guide_legend(title="Descriptor", nrow=2)) +
+  theme(legend.title = element_blank(), legend.position="bottom", legend.direction="horizontal")
+
+racePCAAlluvialSlim
+
+# Honestly the most interesting thing is the much greater proportion of NAs in these vs the geo ones. How did recount3 choose their samples???
+
+descriptorFreqs + geoPCAAlluvial +
+  plot_annotation(tag_levels = 'A') 
+  ggsave("sra_kasper_all_alluvial.pdf", height=3, width=6)
+  ggsave("sra_kasper_all_alluvial.png", height=3, width=6)
+
+descriptorFreqs + geoPCAAlluvialSlim +
+  plot_annotation(tag_levels = 'A') 
+  ggsave("sra_kasper_slim_alluvial.pdf", height=3, width=6)
+  ggsave("sra_kasper_slim_alluvial.png", height=3, width=6)  
 ```
 
+And now we just make the confusion-like matrix and turn that into a heatmap. Amanda can choose what she likes best. 
 
+```{r merge-sra-annot-kasper-3}
+# Create matrix
+confMatrix <- table(Predicted = allSRAFinalPC$strictestGeography, Actual = allSRAFinalPC$pred_pop)
 
+# Convert to data frame and calculate percentages
+df_cm <- melt(confMatrix)
+df_cm$Percentage <- round(100 * df_cm$value / sum(df_cm$value), 1)
 
+# Reverse the order of Predicted factor levels
+df_cm$Predicted <- factor(df_cm$Predicted, levels = rev(unique(df_cm$Predicted)))
 
+# Plot
+confMatrixPlot <- ggplot(df_cm, aes(x = Actual, y = Predicted, fill = value)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = ifelse(value == 0, "", paste0(value, "\n", Percentage, "%"))),
+            size = 1.5, color = "black") +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  xlab("Inferred superpopulation\n(Razi et al, 2024)") + 
+  ylab("Submitted descriptor\n(ancestral/geographic origin)") +
+  theme(legend.position = "none")
+  
+confMatrixPlot
 
+descriptorFreqs + geoPCAAlluvial + confMatrixPlot +
+  plot_layout(design = long3Design, tag_level = 'new') +
+  plot_annotation(tag_levels = 'A') 
+  ggsave("sra_kasper_all_alluvial_conf_matrix.pdf", height=7, width=3)
+  ggsave("sra_kasper_all_alluvial_conf_matrix.png", height=7, width=3)
 
+descriptorFreqs + confMatrixPlot +
+  # plot_layout(design = long3Design, tag_level = 'new') +
+  plot_annotation(tag_levels = 'A') 
+  ggsave("sra_kasper_all_conf_matrix.pdf", height=3, width=6)
+  ggsave("sra_kasper_all_conf_matrix.png", height=3, width=6)
 
+geoPCAAlluvial + confMatrixPlot +
+  # plot_layout(design = long3Design, tag_level = 'new') +
+  plot_annotation(tag_levels = 'A') 
+  ggsave("sra_kasper_all_alluvial_conf_matrix.pdf", height=3, width=6)
+  ggsave("sra_kasper_all_alluvial_conf_matrix.png", height=3, width=6)
+
+geoPCAAlluvialSlim + confMatrixPlot +
+  # plot_layout(design = long3Design, tag_level = 'new') +
+  plot_annotation(tag_levels = 'A') 
+  ggsave("sra_kasper_slim_alluvial_conf_matrix.pdf", height=3, width=6)
+  ggsave("sra_kasper_slim_alluvial_conf_matrix.png", height=3, width=6)
+```
+
+I think that's all we need, really... no point in digging much deeper when it is all going to be mighty confusing anyhow. 
 
