@@ -76,7 +76,7 @@ get_runs_and_biosamples <- function(bp_id, max_retries = 3) {
       Sys.sleep(1)
       
       # Search for BioProject in SRA (search with web history)
-      search_res <- entrez_search(db = "sra", term = paste0(bp_id, "[BioProject] AND TRANSCRIPTOMIC[Src]"), use_history = TRUE, retmax = 5000)
+      search_res <- entrez_search(db = "sra", term = paste0(bp_id, "[BioProject] AND TRANSCRIPTOMIC[Src]"), use_history = TRUE, retmax = 2000)
     
       if (length(search_res$ids) == 0) {
         return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
@@ -87,7 +87,7 @@ get_runs_and_biosamples <- function(bp_id, max_retries = 3) {
       query_key <- search_res$web_history$QueryKey
       
       # Initialize variables for fetching results in chunks
-      chunk_size <- 500
+      chunk_size <- 200
       all_results <- list()
       batch_start <- 0  # Initial offset for pagination
     
@@ -193,7 +193,7 @@ Ok this works - took some debugging now. So now let's run the entire set of quer
 ```{from-bio-project-to-everything-3}
 
 # Batch processing function
-process_in_batches <- function(bioProjects, batch_size = 100, delay = 1) {
+process_in_batches <- function(bioProjects, batch_size = 100, delay = 1, file_prefix) {
   # Split the BioProjects list into smaller chunks
   batches <- split(bioProjects, ceiling(seq_along(bioProjects) / batch_size))
   
@@ -212,7 +212,7 @@ process_in_batches <- function(bioProjects, batch_size = 100, delay = 1) {
 
     # Save progress after each batch (you could save it as CSV or RDS)
     final_results <- bind_rows(all_results)
-    write.csv(final_results, "bioproject_biosample_runlist.csv", row.names = FALSE)  # Save as CSV
+    write.csv(final_results, paste0(file_prefix, "bioproject_biosample_runlist.csv"), row.names = FALSE)  # Save as CSV
 
     # Print a message after each batch is done
     message(paste("Batch", i, "of", total_batches, "completed."))
@@ -231,7 +231,9 @@ process_in_batches <- function(bioProjects, batch_size = 100, delay = 1) {
 # bpsToGrab <- unique(fromKasper$pop)[1:100] # for testing some of the larger ones...
 bpsToGrab <- unique(fromKasper$pop)
 
-allBPs <- process_in_batches(bpsToGrab, batch_size = 100, delay = 2)
+# If this fails again we can limit the number of queries to those with more than 10 runs...
+
+allBPs <- process_in_batches(bpsToGrab[8000:8650], batch_size = 100, delay = 1, file_prefix = "post80")
 ```
 
 If I was feeling devious I would check:
@@ -254,6 +256,4 @@ dim(allSRAFinalKasper)
 allSRAFinalKasper %>% count(pred_pop, strictestGeography)
 allSRAFinalKasper %>% count(pred_pop, strictestRace)
 allSRAFinalKasper %>% filter(pred_pop == "SAS")
-
-
 ```
