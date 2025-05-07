@@ -75,6 +75,9 @@ get_runs_and_biosamples <- function(bp_id, max_retries = 3) {
       # Let's not get banned from NCBI... they say less than 3 queries per second, so... 
       Sys.sleep(1)
       
+      # For debugging only:
+      print(paste0("Now processing ", bp_id))
+      
       # Search for BioProject in SRA (search with web history)
       search_res <- entrez_search(db = "sra", term = paste0(bp_id, "[BioProject] AND TRANSCRIPTOMIC[Src]"), use_history = TRUE, retmax = 2000)
     
