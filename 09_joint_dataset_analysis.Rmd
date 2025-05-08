@@ -28,6 +28,7 @@ library(scales)
 library(rnaturalearth)
 library(rnaturalearthdata)
 library(countrycode)
+library(scattermore) # For PCA plots
 
 options(device = "quartz")
 
@@ -135,11 +136,23 @@ fiveLongDesign <- "
   3#
 "
 
+threeDesign <- "
+  12
+  3#
+"
+
 wide3Design <- "
   1
   2
   3
 "
+
+mixed3Design <- "
+  1133
+  2233
+"
+
+
 
 theme_set(theme_bw(base_size = 6))
 theme_update(axis.text=element_text(size=7))
@@ -275,6 +288,44 @@ dbByRegion + dbByEconomy + plot_spacer() + manualAlluvialCountry +
 ggsave("all_dbs_sample_properties_map_pre.pdf", width = 6, height = 6)
 ggsave("all_dbs_sample_properties_map_pre.png", width = 6, height = 6)
 
+# New version of figure 1 without the manual data and with smaller plots because there's only two bars now: 
+allCountry <- rbind.fill(sraCountry, dbGapCountry)
+allCountry <- allCountry %>%
+  mutate(worldBank = gsub("middle ", "middle\n", worldBank)) %>% 
+  mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) %>%
+  mutate(hasDescriptor = if_else(grepl("dbGaP", db), "GrafPop", hasDescriptor)) %>%
+  mutate(finalCountry = if_else(grepl("USA", finalCountry), "United States", finalCountry))
+
+dbByRegion <- allCountry %>% group_by(worldRegion, db) %>% summarise(value = sum(value), db = db) %>% distinct() %>% as.data.frame %>% 
+  ggplot(., aes(x = db, y=value, fill=worldRegion)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Sample depositor location (WB Economic Region)") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  scale_fill_wber() +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  theme(axis.text.x = element_text(angle = 0, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
+
+dbByEconomy <- allCountry %>% group_by(worldBank, db) %>% summarise(value = sum(value), db = db) %>% distinct() %>% as.data.frame %>% 
+  ggplot(., aes(x = db, y=value, fill=worldBank)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Sample depositor location (WB Income Group)") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  scale_fill_viridis_d(option = "viridis") +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  theme(axis.text.x = element_text(angle = 0, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
+
+dbByRegion + dbByEconomy + plot_spacer() + 
+  plot_layout(design = mixed3Design) +
+  plot_annotation(tag_levels = 'A')
+
+ggsave("no_manual_sample_properties_map_pre.pdf", width = 7, height = 3.5)
+ggsave("no_manual_sample_properties_map_pre.png", width = 7, height = 3.5)
 ```
 
 How overrepresented are these numbers? We begin by grabbing the UN population data:
@@ -423,8 +474,50 @@ geoPlot + litRevGeoPlot + dbgapPlot + racePlot + litRevRacePlot +
 ggsave("all_dbs_descriptors.pdf", width = 7, height = 4.5)
 ggsave("all_dbs_descriptors.png", width = 7, height = 4.5)
 
+geoPlot + dbgapPlot + racePlot +
+    plot_layout(design = threeDesign, tag_level = 'new') +
+    plot_annotation(tag_levels = 'A') 
+
+# Because this figure has been cleaned up already...
+ggsave("no_manual_dbs_descriptors.pdf", width = 7, height = 4.5)
+ggsave("no_manual_dbs_descriptors.png", width = 7, height = 4.5)
 
 ```
+
+Adding the PCA plot from Kasper Hansen's paper (Razi et al, 2024, bioRxiv)
+
+```{r fig2-pca-from-genotype}
+genoCalls <- read.csv("from_Kasper_suppTable3.csv")
+table(genoCalls$pred_pop)
+
+# Need to align our colour mappings with theirs... or come up with a new colour scheme???
+
+pcaGenotype <- ggplot(genoCalls, aes(x = pc1, y = pc2, color = pred_pop)) +
+  geom_scattermore()
+  ggtitle("Principal components from inferred genotype") +
+  xlab("PC1") +
+  ylab("PC2") +
+  scale_fill_dbGap() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1)) 
+
+pcaGenotype
+
+
+dbgapPlot <- ggplot(dbgapProp, aes(x = fct_rev(fct_inorder(variable)), y = n, fill=variable)) +
+  geom_bar(stat="identity") +
+  ggtitle("Reported dbGaP descriptor\n(GrafPop software)") +
+  xlab(NULL) +
+  ylab(NULL) +
+  coord_flip() +
+  scale_fill_dbGap() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") +
+  theme(plot.title = element_text(hjust = 1)) 
+
+```
+
 
 Finally, working out the overrepresentation of countries in the three datasets, so I can make that second supplementary plot. We grab the population regions from the toplot2 object Amanda had as a good starting point:
 
