@@ -32,9 +32,10 @@ library(scattermore) # For PCA plots
 
 options(device = "quartz")
 
-allSRAFinal <- readRDS("20240901_allSRAFinal_for_plotting.rds")
+allSRAFinal <- readRDS("20250508_allSRAFinal_for_plotting_razi_merge.rds")
 dbGapFinal <- readRDS("20240731_dbgap_final.rds")
 litRevFinal <- readRDS("20240916_manual_final.rds")
+allSRAClean <- readRDS("20250508_allSRA_data_razi_merge.rds")
 
 ```
 
@@ -287,12 +288,17 @@ dbByRegion + dbByEconomy + plot_spacer() + manualAlluvialCountry +
   plot_annotation(tag_levels = 'A')
 ggsave("all_dbs_sample_properties_map_pre.pdf", width = 6, height = 6)
 ggsave("all_dbs_sample_properties_map_pre.png", width = 6, height = 6)
+```
 
-# New version of figure 1 without the manual data and with smaller plots because there's only two bars now: 
+New version of figure 1 without the manual data and with smaller plots because there's only two bars now: 
+
+# CURRENTLY NOT EVALUATED BECAUSE IT NEEDS BETTER INTEGRATION IN THE CODE.
+
+```{r plot-clean-country-2-with-kaster eval=F}
 allCountry <- rbind.fill(sraCountry, dbGapCountry)
 allCountry <- allCountry %>%
   mutate(worldBank = gsub("middle ", "middle\n", worldBank)) %>% 
-  mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) %>%
+  # mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) %>%
   mutate(hasDescriptor = if_else(grepl("dbGaP", db), "GrafPop", hasDescriptor)) %>%
   mutate(finalCountry = if_else(grepl("USA", finalCountry), "United States", finalCountry))
 
@@ -484,9 +490,9 @@ ggsave("no_manual_dbs_descriptors.png", width = 7, height = 4.5)
 
 ```
 
-Adding the PCA plot from Kasper Hansen's paper (Razi et al, 2024, bioRxiv)
+Adding the PCA plot from Kasper Hansen's paper (Razi et al, 2024, bioRxiv) NEEDS TO BE FIXED AND UPDATED - MOVE FROM PREVIOUS SCRIPT.
 
-```{r fig2-pca-from-genotype}
+```{r fig2-pca-from-genotype, eval=F}
 genoCalls <- read.csv("from_Kasper_suppTable3.csv")
 table(genoCalls$pred_pop)
 
@@ -503,7 +509,6 @@ pcaGenotype <- ggplot(genoCalls, aes(x = pc1, y = pc2, color = pred_pop)) +
   theme(plot.title = element_text(hjust = 1)) 
 
 pcaGenotype
-
 
 dbgapPlot <- ggplot(dbgapProp, aes(x = fct_rev(fct_inorder(variable)), y = n, fill=variable)) +
   geom_bar(stat="identity") +
