@@ -38,11 +38,9 @@ Ultimately we want to
 
 ```{r read-data-and-ids}
 fromKasper <- read.csv("from_Kasper_suppTable3.csv")
-sraPre <- read.csv('SRA_metadata/SRA_batches/SraRunTable_00.txt',header=T)
 allSRAFinal <- readRDS("20240901_allSRAFinal_for_plotting.rds") #
 
 head(fromKasper)
-head(sraPre)
 head(allSRAFinal)
 ```
 
@@ -50,7 +48,7 @@ And the sad answer is no... their ID is a run ID, whereas mine is a biosample ID
 
 But! We do have SRA.Study ids in common, so we just need to grab the biosample ID that corresponds to Kasper's run ID, and we are good to go for all downstream merging!
 
-```{r convert-run-to-biosample-1}
+```{r convert-run-to-biosample-1, eval=F}
 # We start with a test ID from Kasper, and a test ID from me for the same sample:
 kasperID <- "ERR188055" # from Kasper
 igrID <- "SAMEA1573329" # from me -
