@@ -3,6 +3,7 @@ title: "Diversity project tissue cleanup"
 layout: "post"
 tags: "diversity"
 output: html_document
+date: "`r Sys.Date()`"
 editor_options: 
   chunk_output_type: console
 ---
@@ -16,14 +17,13 @@ knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA
 # But we also have to do this manually because R studio is stupid: 
 setwd(knitr::opts_knit$get("root.dir"))
 library(ggplot2)
-library(rols)
 library(data.table)
 library(plyr)
 library(reshape)
 library(tidyverse)
 library(viridis)
 
-allSRAFinal <- readRDS("allSRAFinal.rds")
+allSRAFinal <- readRDS("20250517_allSRAFinal.rds")
 
 ```
 
@@ -339,7 +339,6 @@ Most of these had info in one of the tissue columns, but sometimes I had to go b
 * ERP122103: single cancer sample: finalOrgan:cancer and finalTissue:cancer
 * ERP122256: soft tissue cancer: finalOrgan:cancer and finalTissue:cancer
 * SRP151215: LCLs
-* SRP154973: 'adjacent normal' to cancers, lung cell carcinoma: finalOrgan:lung, finalSystem:respiratory
 * SRP179998: brain sample that for some reason isn't matching well: finalOrgan:brain and finalSystem:nervous
 * SRP181079: BCR sequencing of B-cells; finalOrgan:blood and finalSystem:immune
 * SRP181649: single established cell line: no fix, will get dropped
@@ -363,9 +362,6 @@ allSRAFinal[allSRAFinal$SRA.Study %in% "SRP343308",]$finalOrgan <- "intestine"
 
 allSRAFinal[allSRAFinal$SRA.Study %in% "SRP179998",]$finalSystem <- "nervous"
 allSRAFinal[allSRAFinal$SRA.Study %in% "SRP179998",]$finalOrgan <- "brain"
-
-allSRAFinal[allSRAFinal$SRA.Study %in% "SRP154973",]$finalSystem <- "respiratory"
-allSRAFinal[allSRAFinal$SRA.Study %in% "SRP154973",]$finalOrgan <- "lung"
 
 noAssignment <- allSRAFinal[is.na(allSRAFinal$finalOrgan) & is.na(allSRAFinal$finalSystem),]
 table(noAssignment$SRA.Study)
@@ -552,8 +548,85 @@ table(sourceSystemMismatches$SRA.Study)
 
 # Yep, not too fussed. So now we can remove some of the temp columns and write this out
 allSRAFinal <- allSRAFinal[,-(37:46)]
-saveRDS(allSRAFinal, "allSRAFinalTissues.rds")
+saveRDS(allSRAFinal, "20250517_allSRAFinalTissues.rds")
 ```
 
-And we're done!
+And now my other nemesis... disease state. There's a lot of cancer info already in there, but what else is there?
+
+```{r disease-status-1, include=T, eval=F}
+# Start by checking the columns where disease status might hide, that we haven't looked at already:
+names(allSRAFinal)
+head(sort(table(allSRAFinal$disease), decreasing=T), n=20)
+head(sort(table(allSRAFinal$disease_state), decreasing=T), n=20)
+head(sort(table(allSRAFinal$Diagnosis), decreasing=T), n=20)
+head(sort(table(allSRAFinal$clinical_information), decreasing=T), n=20)
+head(sort(table(allSRAFinal$health_state), decreasing=T), n=20)
+head(sort(table(allSRAFinal$DONOR_HEALTH_STATUS), decreasing=T), n=20)
+
+# All of these make sense except for clinical_information, so... we go back to doing the same stuff we did with the population descriptors.
+write.table(as.data.frame(table(allSRAFinal$disease)), file="disease_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$disease_state)), file="disease_state_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$Diagnosis)), file="Diagnosis_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$health_state)), file="health_state_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+write.table(as.data.frame(table(allSRAFinal$DONOR_HEALTH_STATUS)), file="DONOR_HEALTH_STATUS_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+```
+
+And now to check the intersections etc etc...
+
+```{r disease-status-2}
+# First, how independent are all of these:
+table(is.na(allSRAFinal$disease))
+table(is.na(allSRAFinal$Diagnosis))
+table(is.na(allSRAFinal$disease_state))
+table(is.na(allSRAFinal$health_state))
+table(is.na(allSRAFinal$DONOR_HEALTH_STATUS))
+      
+# And now please tell me they don't overlap too much (F/F would be overlap):
+table(is.na(allSRAFinal$disease), is.na(allSRAFinal$Diagnosis))
+table(is.na(allSRAFinal$disease), is.na(allSRAFinal$disease_state))
+table(is.na(allSRAFinal$disease), is.na(allSRAFinal$health_state)) # ARGH
+table(is.na(allSRAFinal$disease), is.na(allSRAFinal$DONOR_HEALTH_STATUS)) #ARGH
+
+table(is.na(allSRAFinal$disease_state), is.na(allSRAFinal$Diagnosis))
+table(is.na(allSRAFinal$disease_state), is.na(allSRAFinal$health_state))
+table(is.na(allSRAFinal$disease_state), is.na(allSRAFinal$DONOR_HEALTH_STATUS))
+
+table(is.na(allSRAFinal$health_state), is.na(allSRAFinal$Diagnosis))
+table(is.na(allSRAFinal$health_state), is.na(allSRAFinal$DONOR_HEALTH_STATUS))
+
+table(is.na(allSRAFinal$Diagnosis), is.na(allSRAFinal$DONOR_HEALTH_STATUS))
+
+# Checking the overlaps:
+allSRAFinal[!is.na(allSRAFinal$disease) & !is.na(allSRAFinal$DONOR_HEALTH_STATUS),] # DONOR_HEALTH_STATUS wins, so when we coalesce it will go first.
+
+allSRAFinal %>% count(disease, health_state) # Disease wins.
+
+# Now we update terms:
+diseaseTerms <- read.csv("20240624_disease_descriptors.csv")
+allSRAFinal$finalDisease <- NA
+
+# The laziest way to deal with the ordering here is to reorder the diseaseTerms file by the order we want:
+# Diagnosis, health_state, disease_state, disease, DONOR_HEALTH_STATUS 
+# That way as we move down it, we'll overwrite previously incorrect assignments:
+
+diseaseTerms$coded.as <- factor(diseaseTerms$coded.as, levels=c("Diagnosis", "health_state", "disease_state", "disease", "DONOR_HEALTH_STATUS"))
+diseaseTerms <- diseaseTerms[order(diseaseTerms$coded.as),]
+
+for (i in 1:nrow(diseaseTerms)){
+  tryCatch({
+  allSRAFinal[allSRAFinal[,as.character(diseaseTerms$coded.as[i])] %in% diseaseTerms$Term[i],]$finalDisease <- diseaseTerms$grouping[i]}, error = function(e) {
+    message(sprintf("Error at i = %d: %s", i, e$message))
+  })
+}
+
+# And we mustn't forget to add all the other cancer calls!
+allSRAFinal[allSRAFinal$finalOrgan %in% "cancer",]$finalDisease <- "cancer"
+table(allSRAFinal$finalDisease)
+
+# Check that this actually worked...
+allSRAFinal[!is.na(allSRAFinal$health_state) & !is.na(allSRAFinal$disease),]
+
+# Yep looks good, now we can really analyse things:
+saveRDS(allSRAFinal, "20250517_allSRAFinalTissuesDisease.rds")
+```
 
