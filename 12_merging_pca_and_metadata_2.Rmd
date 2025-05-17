@@ -413,12 +413,12 @@ racePCAAlluvialSlim
 
 # Honestly the most interesting thing is the much greater proportion of NAs in these vs the geo ones. How did recount3 choose their samples???
 
-descriptorFreqs + geoPCAAlluvial +
+geoFreqs + geoPCAAlluvial +
   plot_annotation(tag_levels = 'A') 
   ggsave("sra_kasper_all_alluvial.pdf", height=3, width=6)
   ggsave("sra_kasper_all_alluvial.png", height=3, width=6)
 
-descriptorFreqs + geoPCAAlluvialSlim +
+geoFreqs + geoPCAAlluvialSlim +
   plot_annotation(tag_levels = 'A') 
   ggsave("sra_kasper_slim_alluvial.pdf", height=3, width=6)
   ggsave("sra_kasper_slim_alluvial.png", height=3, width=6)  
