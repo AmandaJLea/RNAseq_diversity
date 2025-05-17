@@ -1,0 +1,155 @@
+---
+title: "Grabbing country for all institutions"
+author: "Irene Gallego Romero"
+date: "2025-05-14"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(stringdist)
+library(purrr)
+
+options(device = "quartz")
+```
+
+Let's try to use ROR to grab country identifiers for all institutions that we can then include in the map. This beats my manual approach from a while ago by, like, a lot...
+
+We're going to use the [ROR](https://ror.org/) data dump for this. I grabbed version v1.65-2025-05-05-ror-data from Zenodo on 14.05.2025.
+
+```{r read-big-dataset, eval=T}
+old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
+new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
+
+names(new)[8] <- "Cell_line"
+
+allSRA <- rbind.fill(old, new)
+dim(allSRA)
+allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+dim(allSRA) # Yep that cleaned things up
+
+# Now we drop repeated BioSamples:
+allSRAClean <- allSRA %>% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAClean) # 795071 unique biosamples, now we drop studies with fewer than 10 BioSamples
+
+allSRAcounts <- as.data.frame(table(allSRAClean$SRA.Study))
+keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
+allSRAFilt <- allSRAClean[allSRAClean$SRA.Study %in% keepStudies$Var1,]
+dim(allSRAFilt) # Most of them stick around... 747914 BioSamples 
+
+length(unique(allSRAFilt$SRA.Study))
+length(unique(allSRA$SRA.Study)) # Compared to before... 
+
+# And we also sanity check the institution:
+table(is.na(allSRAFilt$Center.Name))
+
+institutions <- data.frame(name = tolower(unique(allSRAFilt$Center.Name)))
+dim(institutions)
+```
+
+Now we start working with the ROR data, which will be new and exciting... 
+
+```{r read-and-parse-ror}
+
+rorData <- read.csv("ROR_data/v1.65-2025-05-05-ror-data_schema_v2.csv", stringsAsFactors = F)
+
+# Extract useful fields: name, aliases, acronyms, country
+rorClean <- data.frame(
+  label = tolower(rorData$names.types.ror_display),
+  acronyms = tolower(rorData$names.types.acronym),
+  aliases = tolower(rorData$names.types.alias),
+  country = rorData$locations.geonames_details.country_name,
+  stringsAsFactors = FALSE
+)
+
+# Replace NAs with empty strings for merging fields in the next few steps...
+rorClean[is.na(rorClean)] <- ""
+
+#Build unified name list
+rorClean$all_names <- paste(rorClean$label, rorClean$aliases, rorClean$acronyms, sep = ";")
+ror_lookup <- rorClean %>%
+  rowwise() %>%
+  mutate(name_list = strsplit(all_names, ";")) %>%
+  unnest(name_list) %>%
+  filter(name_list != "") %>%
+  select(name_list, country) %>%
+  distinct()
+
+# And now let's clean it up... I suspect the opening "the" is messing up a lot of matches, so let's get rid of it and ask ourselves, how much worse can that make things, plus all the language code info that will defs ruin the matching:
+ror_lookup <- ror_lookup %>%
+  mutate(name_list = gsub("^the ", "", name_list)) %>% 
+  mutate(name_list = gsub("no_lang_code: ", "", name_list)) %>%
+  mutate(name_list = gsub("[a-z][a-z]: ", "", name_list)) 
+
+# Keeping only the element after the final comma, in case there are multiple, since I often see the institution that could be matched is there - this should help with country matching but needs to be handled carefully when trying to unite the columns later... or does it?
+institutions <- institutions %>%
+  mutate(name = gsub("^the ", "", name)) %>% 
+  mutate(lastName = map_chr(str_split(name, ","), ~ tail(.x, 1))) %>% 
+  mutate(lastName = gsub("^the ", "", lastName)) 
+
+# Match function using Jaro-Winkler distance (measures edit distance, 0 is identical whereas 1 is totally different, favours matches from the beginning, commonly used in fuzzy text matching)
+find_best_match <- function(inst_name, ror_names) {
+  if (is.na(inst_name) || inst_name == "" || length(ror_names) == 0) {
+    return(c(match_name = NA, distance = NA))
+  }
+
+  # Compute distances
+  distances <- stringdist(inst_name, ror_names, method = "jw")
+
+  # If all distances are NA or vector is empty
+  if (all(is.na(distances))) {
+    return(c(match_name = NA, distance = NA))
+  }
+
+  # Get best match safely
+  best_idx <- which.min(distances)
+  return(c(match_name = ror_names[best_idx], distance = distances[best_idx]))
+}
+
+matches <- t(sapply(institutions$name, find_best_match, ror_lookup$name_list))
+
+matchedNames <- institutions %>%
+  bind_cols(matches) %>%
+  left_join(ror_lookup, by = c("match_name" = "name_list"))
+```
+
+There are clearly some dubious things going on here, like the fact that GEO gets parsed to GREO, which we do not like and need to correct, but how reliable is this overall?
+
+```{r explore-name-merges}
+dim(matchedNames)
+dim(institutions)
+
+length(unique(matchedNames$name))
+length(unique(matchedNames$match_name))
+#Uh.... some things are clearly missing here and we don't like that. But what is missing??? Before we delve into that, let's quickly look at some of the matches across confidence bins:
+
+matchedNames$distance <- as.numeric(matchedNames$distance)
+summary(matchedNames$distance)
+
+matchedNames %>% arrange(desc(distance)) %>% head(n = 50)
+# These are all dumpster fires but many are easy to fix, though how do I justify bothering? There are many obvious mistakes, though, which would be improved if we did stringsplit and only kept the final one, which seems to be the institutional name...
+
+# The internet won't tell me what's a 'good' match so let's just eyeball some different lists. I suspect this is happenings because the distance is contingent on string length?
+matchedNames %>% filter(distance > 0) %>% arrange(distance) %>% head(n = 50)
+matchedNames %>% filter(distance > 0.05) %>% arrange(distance) %>% head(n = 50)
+matchedNames %>% filter(distance > 0.1) %>% arrange(distance) %>% head(n = 50)
+matchedNames %>% filter(distance > 0.2) %>% arrange(distance) %>% head(n = 50)
+matchedNames %>% filter(distance > 0.3) %>% arrange(distance) %>% head(n = 50)
+
+matchedNames %>% filter(distance == 0) %>% nrow()
+```
+
+There's some pretty outrageous mistakes that would require manual clean up, and some really perplexing ones, eg university of maryland going to university of malakand (tho if you look at the raw data there isn't a single sensible entry for maryland...). Garvan also failing very hard. I think wehave to apply a clear cutoff of some sort and just be like, well, that sucks, but that's the overall issue with the metadata too. 
+
+The most I am willing to compromise is to take the ones that fail matching at distance 0 and then strip the commas out and see what happens. 
+
+
+So in conclusion I could do this, but how annoying would it be? Need to discuss with Amanda

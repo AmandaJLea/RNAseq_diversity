@@ -474,5 +474,9 @@ geoPCAAlluvialSlim + confMatrixPlot +
   ggsave("sra_kasper_slim_alluvial_conf_matrix.png", height=3, width=6)
 ```
 
-I think that's all we need, really... no point in digging much deeper when it is all going to be mighty confusing anyhow. 
+I think that's all we need, really... no point in digging much deeper when it is all going to be mighty confusing anyhow. And since the actual plotting and integration happens in the next scripts, let's write out our merged outputs
 
+```{r write-output}
+saveRDS(allSRAClean, file="20250508_allSRA_data_razi_merge.rds")
+saveRDS(allSRAFinalPC, file="20250508_allSRAFinal_for_plotting_razi_merge.rds")
+```
