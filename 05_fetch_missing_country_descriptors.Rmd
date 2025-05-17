@@ -1,0 +1,86 @@
+---
+title: "Fetching missing sequencing sites."
+layout: "post"
+tags: "diversity"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+We wanted to work out who is sequencing what, and for that we need to fill in a lot of the studies that were submitted by GEO to SRA instead of directly by the submitter. This requires a couple of steps:
+
+First we convert from SRA.Study to Bioproject ID. Then we use the Bioproject ID to fetch the summary and parse through that. Right now this is only run on the ~293 studies that we are keeping, but it's also needed for the bigger dataset of 12k studies... and this will need a wrapper etc etc. 
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(viridis)
+library(rentrez)
+library(tidyverse)
+
+options(device = "quartz")
+
+allSRAFinal <- readRDS("20250517_allSRAFinalTissuesDisease.rds")
+```
+
+Grab all the SRA IDs that were deposited by GEO and let's figure out where we go from there...
+
+```{r depositing-site, include=F, eval=F}
+length(unique(allSRAFinal$Center.Name))
+
+siteStudy <- allSRAFinal %>% count(Center.Name, SRA.Study)
+geoStudies <- siteStudy[siteStudy$Center.Name %in% "GEO",]$SRA.Study 
+
+# This took forever to fix but...
+getBPid <- sapply(geoStudies, function(x) entrez_link(dbfrom="sra", id=entrez_search(db = "sra", term = x)$ids[1], db="all")$links$sra_bioproject_all)
+getBPid
+
+getSubmitter <- sapply(getBPid, function(x) extract_from_esummary(entrez_summary(db="bioproject", x[[1]][1]), "submitter_organization"))
+getSubmitter
+
+getSubmitterdf <- as.data.frame(getSubmitter)
+getSubmitterdf$SRA <- rownames(getSubmitterdf)
+
+# And now we add that info back to the relevant column, and replace the GEO calls. I honestly can't remember if I need to vectorise or not but whatever. 
+allSRAFinal$finalSite <- NA
+
+for (i in 1:nrow(getSubmitterdf)){
+  allSRAFinal[allSRAFinal$SRA.Study %in% getSubmitterdf$SRA[i],]$finalSite <- getSubmitterdf$getSubmitter[i]    
+}
+
+allSRAFinal$finalSite <- coalesce(allSRAFinal$finalSite, allSRAFinal$Center.Name)
+
+# Is GEO really gone???
+length(unique(allSRAFinal$Center.Name))
+length(unique(allSRAFinal$finalSite)) # Well that definitely increased, so that's good. 
+
+siteTable <- allSRAFinal %>% count(finalSite, SRA.Study)
+
+# I still need to work out what is in what country, but at least I have a single table... 
+write.table(siteTable, file="20250517_final_Site_descriptors_raw.tsv", quote=F, row.names=F, sep="\t")
+```
+
+I decided that working out the country was easiest if done by hand at this level of resolution, but see the scripts on using the ROR data for this purpose (worth a comparison)
+
+```{r update-sampling-site-country}
+countryList <- read.csv("20240624_final_Site_descriptors.csv")
+
+allSRAFinal$finalCountry <- NA
+
+for (i in 1:nrow(countryList)){
+ tryCatch({
+  allSRAFinal[allSRAFinal$SRA.Study %in% countryList$SRA.Study[i],]$finalCountry <- countryList$Country[i]}, error = function(e) {
+    message(sprintf("Error at i = %d: %s", i, e$message))
+  })    
+}
+
+sort(table(allSRAFinal$finalCountry), decreasing=T)
+
+# Anyhow, let's make sure we only do this once:
+saveRDS(allSRAFinal, "20250517_allSRAFinalTissuesDiseaseCenters.rds")
+```
