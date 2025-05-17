@@ -8,8 +8,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-We will finally analyse this data properly. 
-
 ```{r setup, include=F}
 knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
 # But we also have to do this manually because R studio is stupid: 
@@ -27,7 +25,7 @@ library(R.utils)
 options(device = "quartz")
 ```
 
-So, working with Kasper's data I realised that... they have not cleaned out things like Hela etc, which I have. So we're going to try to that, and then we're going to try to overlap their samples with our own list of primary samples, which is going to require some thinking on my part to remember what we were doing in the first place. 
+So, looking at the data from Razi et al I realised that... they have not cleaned out things like Hela etc, which I have. So we're going to try to that, and then we're going to try to overlap their samples with our own list of primary samples, which is going to require some thinking on my part to remember what we were doing in the first place. 
 
 The first thing we need to do is find equivalent identifiers between our data and theirs. They use DRR something something which does not match our SRA identifiers, but I have faith in my ability to reconcile the two. First we check if the identifiers were in our raw SRA dumps:
 
@@ -38,7 +36,7 @@ Ultimately we want to
 
 ```{r read-data-and-ids}
 fromKasper <- read.csv("from_Kasper_suppTable3.csv")
-allSRAFinal <- readRDS("20240901_allSRAFinal_for_plotting.rds") #
+allSRAFinal <- readRDS("20250517_allSRAFinal.rds") #
 
 head(fromKasper)
 head(allSRAFinal)
@@ -46,7 +44,7 @@ head(allSRAFinal)
 
 And the sad answer is no... their ID is a run ID, whereas mine is a biosample ID... but they should not be hard to link... if I could work out what fields I want. 
 
-But! We do have SRA.Study ids in common, so we just need to grab the biosample ID that corresponds to Kasper's run ID, and we are good to go for all downstream merging!
+But! We do have SRA.Study ids in common, so we just need to grab the biosample ID that corresponds to Kasper's run ID, and we are good to go for all downstream merging! Here is a brief sanity check:
 
 ```{r convert-run-to-biosample-1, eval=F}
 # We start with a test ID from Kasper, and a test ID from me for the same sample:
