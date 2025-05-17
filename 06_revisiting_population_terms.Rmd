@@ -5,6 +5,7 @@ tags: "diversity"
 output: html_document
 editor_options: 
   chunk_output_type: console
+date: "`r Sys.Date()`"
 ---
 
 This started out as an analysis script, but there was still some ambiguity left in how the population descriptors were coded, so we're going to revisit it! Yay :(
@@ -21,7 +22,7 @@ library(tidyverse)
 library(viridis)
 options(device = "quartz")
 
-allSRAFinal <- readRDS("allSRAFinalTissuesCentersDisease.rds")
+allSRAFinal <- readRDS("20250517_allSRAFinalTissuesDiseaseCenters.rds")
 ```
 
 Let's look at the data using the previous population descriptors and country terms.
@@ -165,7 +166,7 @@ allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestR
 allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(hispanic)
 ```
 
-### Option 2: THe original category label trumps most things
+### Option 2: The original category label trumps most things
 
 Only if it *really* matches the US Census term in the geography columns, or if it really doesn't match the census terms in the race columns, are things switched over.
 
@@ -279,7 +280,7 @@ allSRAFinal <- allSRAFinal %>%
     as.data.frame()
 
 # And let's remove the intermediate columns because they're annoying:
-allSRAFinal <- allSRAFinal[,c(1:41,44:47)]
+allSRAFinal <- allSRAFinal[,c(1:40,43:46)]
 
 # Some big changes in White/European and Black/Subsaharan Africa if we are very strict with terms...
 allSRAFinal %>% count(finalGeography, strictGeography, strictestGeography)
@@ -600,9 +601,5 @@ allSRAFinal %>% count(hispanic, strictestRace)
 
 # Not sure if this is due to how we coded it, but that's pleasant. Except, what to do with the people with two labels??
 
- saveRDS(allSRAFinal, file="20240901_allSRAFinal.rds")
-
-
+ saveRDS(allSRAFinal, file="20250517_allSRAFinal.rds")
 ```
-
-
