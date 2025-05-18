@@ -294,3 +294,42 @@ allSRAFinal <- allSRAFinal %>% select(!all_of(c("pop", "BioProject", "acc", "zer
 
 saveRDS(allSRAFinal, file="20250517_allSRAFinalRazi.rds")
 ```
+
+We also want to process their overall file in the same way as ours, so we can make comparisons later on, for figure 2 - down to studies with 10 distinct BioSamples or more, and we can do this two ways:
+
+1. Merge with our own SRA dump (there's some degree of missingness, but not much)
+2. Keep Razi et al sepatate. 
+
+```{r raw-sra-dump-merge, eval=T}
+old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
+new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
+
+names(new)[8] <- "Cell_line"
+
+allSRA <- rbind.fill(old, new)
+allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+
+# We know the metadata is sometimes incomplete across the same study (eg SRP186088), and we want to filter down to studies with more than 10 biosamples and a descriptor. So - here we simply keep the studies with 10 BioSamples:
+allSRACounts <- allSRA %>% group_by(SRA.Study) %>% summarise(bioSamples = n_distinct(BioSample))
+keepStudies <- allSRACounts[allSRACounts$bioSamples >= 10,] 
+allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$SRA.Study,]
+allSRAFilt <- allSRAFilt %>% distinct(BioSample, .keep_all = TRUE)
+dim(allSRAFilt) 
+
+# And after filtering for 10 BioSamples or more
+length(unique(allSRAFilt$BioSample))
+
+# And now we merge - this just keeps one row per BioSample considering only those we liked, which is what we want to do later on. 
+allSRAFiltKasperLeft <- left_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T)
+dim(allSRAFiltKasperLeft)
+allSRAFiltKasperLeft %>% drop_na(pred_pop) %>% nrow()
+
+allSRAFiltKasperRight <- right_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T)
+dim(allSRAFiltKasperRight)
+
+# There's about 22k samples in recount that are not in our dump, and I'm curious as to why, but not curious enough to go digging deeply.
+dim(allSRAFiltKasperRight)[1] - allSRAFiltKasperLeft %>% drop_na(pred_pop) %>% nrow()
+
+saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join.rds")
+saveRDS(allSRAFiltKasperRight, file="20250518_allSRACleanRazi_right_join.rds")
+```

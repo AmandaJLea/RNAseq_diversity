@@ -745,6 +745,52 @@ allSRAFinal %&gt;% count(pred_pop, strictestGeography)</code></pre>
 allSRAFinal &lt;- allSRAFinal %&gt;% select(!all_of(c(&quot;pop&quot;, &quot;BioProject&quot;, &quot;acc&quot;, &quot;zero_geno&quot;, &quot;sub_pop&quot;)))
 
 saveRDS(allSRAFinal, file=&quot;20250517_allSRAFinalRazi.rds&quot;)</code></pre>
+<p>We also want to process their overall file in the same way as ours,
+so we can make comparisons later on, for figure 2 - down to studies with
+10 distinct BioSamples or more, and we can do this two ways:</p>
+<ol style="list-style-type: decimal">
+<li>Merge with our own SRA dump (there’s some degree of missingness, but
+not much)</li>
+<li>Keep Razi et al sepatate.</li>
+</ol>
+<pre class="r"><code>old &lt;- fread(&quot;SRA_metadata/20240613_run_selector_metadata.txt&quot;, na.strings=c(&quot;&quot;,&quot; &quot;,&quot;NA&quot;), sep=&quot;\t&quot;)</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata.txt&quot;, na.strings = c(&quot;&quot;, : na.strings[2]==&quot; &quot; consists only of whitespace, ignoring. strip.white==TRUE (default) and
+## &quot;&quot; is present in na.strings, so any number of spaces in string columns will already be read as &lt;NA&gt;.</code></pre>
+<pre class="r"><code>new &lt;- fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, na.strings=c(&quot;&quot;,&quot; &quot;,&quot;NA&quot;))</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, : na.strings[2]==&quot; &quot; consists only of whitespace, ignoring. strip.white==TRUE (default) and &quot;&quot; is
+## present in na.strings, so any number of spaces in string columns will already be read as &lt;NA&gt;.</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, : Found and resolved improper quoting out-of-sample. First healed line 607994: &lt;&lt;SRP218982 GEO
+## SAMN12614816 Homo sapiens TRANSCRIPTOMIC &quot;classical&quot; (CL) CD14++CD16- monocytes blood NA NA NA NA NA NA NA 2021-11-21T00:00:00Z 2019-08-21T11:32:00Z NA NA NA NA Blood NA NA NA NA
+## NA &gt;&gt;. If the fields are not quoted (e.g. field separator does not appear within any field), try quote=&quot;&quot; to avoid this warning.</code></pre>
+<pre class="r"><code>names(new)[8] &lt;- &quot;Cell_line&quot;
+
+allSRA &lt;- rbind.fill(old, new)
+allSRA &lt;- allSRA[allSRA$Organism == &quot;Homo sapiens&quot; &amp; allSRA$LibrarySource== &quot;TRANSCRIPTOMIC&quot;,]
+
+# We know the metadata is sometimes incomplete across the same study (eg SRP186088), and we want to filter down to studies with more than 10 biosamples and a descriptor. So - here we simply keep the studies with 10 BioSamples:
+allSRACounts &lt;- allSRA %&gt;% group_by(SRA.Study) %&gt;% summarise(bioSamples = n_distinct(BioSample))
+keepStudies &lt;- allSRACounts[allSRACounts$bioSamples &gt;= 10,] 
+allSRAFilt &lt;- allSRA[allSRA$SRA.Study %in% keepStudies$SRA.Study,]
+allSRAFilt &lt;- allSRAFilt %&gt;% distinct(BioSample, .keep_all = TRUE)
+dim(allSRAFilt) </code></pre>
+<pre><code>## [1] 747964     45</code></pre>
+<pre class="r"><code># And after filtering for 10 BioSamples or more
+length(unique(allSRAFilt$BioSample))</code></pre>
+<pre><code>## [1] 747964</code></pre>
+<pre class="r"><code># And now we merge - this just keeps one row per BioSample considering only those we liked, which is what we want to do later on. 
+allSRAFiltKasperLeft &lt;- left_join(allSRAFilt, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;)) %&gt;% distinct(BioSample, .keep_all=T)
+dim(allSRAFiltKasperLeft)</code></pre>
+<pre><code>## [1] 747964     56</code></pre>
+<pre class="r"><code>allSRAFiltKasperLeft %&gt;% drop_na(pred_pop) %&gt;% nrow()</code></pre>
+<pre><code>## [1] 232023</code></pre>
+<pre class="r"><code>allSRAFiltKasperRight &lt;- right_join(allSRAFilt, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;)) %&gt;% distinct(BioSample, .keep_all=T)
+dim(allSRAFiltKasperRight)</code></pre>
+<pre><code>## [1] 254327     56</code></pre>
+<pre class="r"><code># There&#39;s about 22k samples in recount that are not in our dump, and I&#39;m curious as to why, but not curious enough to go digging deeply.
+dim(allSRAFiltKasperRight)[1] - allSRAFiltKasperLeft %&gt;% drop_na(pred_pop) %&gt;% nrow()</code></pre>
+<pre><code>## [1] 22304</code></pre>
+<pre class="r"><code>saveRDS(allSRAFiltKasperLeft, file=&quot;20250518_allSRACleanRazi_left_join.rds&quot;)
+saveRDS(allSRAFiltKasperRight, file=&quot;20250518_allSRACleanRazi_right_join.rds&quot;)</code></pre>
 
 
 
