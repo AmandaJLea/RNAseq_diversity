@@ -10,7 +10,7 @@
 
 
 
-<meta name="date" content="2025-05-06" />
+<meta name="date" content="2025-05-18" />
 
 <title>Merging the PCA with our calls, part 1</title>
 
@@ -350,17 +350,16 @@ display: none;
 
 
 <h1 class="title toc-ignore">Merging the PCA with our calls, part 1</h1>
-<h4 class="date">2025-05-06</h4>
+<h4 class="date">2025-05-18</h4>
 
 </div>
 
 
-<p>We will finally analyse this data properly.</p>
-<p>So, working with Kasper’s data I realised that… they have not cleaned
-out things like Hela etc, which I have. So we’re going to try to that,
-and then we’re going to try to overlap their samples with our own list
-of primary samples, which is going to require some thinking on my part
-to remember what we were doing in the first place.</p>
+<p>So, looking at the data from Razi et al I realised that… they have
+not cleaned out things like Hela etc, which I have. So we’re going to
+try to that, and then we’re going to try to overlap their samples with
+our own list of primary samples, which is going to require some thinking
+on my part to remember what we were doing in the first place.</p>
 <p>The first thing we need to do is find equivalent identifiers between
 our data and theirs. They use DRR something something which does not
 match our SRA identifiers, but I have faith in my ability to reconcile
@@ -372,347 +371,51 @@ his calls from genotype, including unassigned. 3. can also check how
 often the same biosample is assigned different ancestries by Kasper
 lol.</p>
 <pre class="r"><code>fromKasper &lt;- read.csv(&quot;from_Kasper_suppTable3.csv&quot;)
-sraPre &lt;- read.csv(&#39;SRA_metadata/SRA_batches/SraRunTable_00.txt&#39;,header=T)
-allSRAFinal &lt;- readRDS(&quot;20240901_allSRAFinal_for_plotting.rds&quot;) #
+allSRAFinal &lt;- readRDS(&quot;20250517_allSRAFinal.rds&quot;) #
 
 head(fromKasper)</code></pre>
-<pre><code>##          pc1       pc2       pop   sub_pop zero_geno   assay percent_zero
-## 1   3.264836 -3.858396 DRP000366 DRR000897      5665 rna-seq    18.348178
-## 2  -9.549580 -9.418647 DRP000425 DRR001174      3918 rna-seq    12.689879
-## 3  -9.610384 -9.631526 DRP000425 DRR001173      4704 rna-seq    15.235628
-## 4 -11.639558 -9.638593 DRP000425 DRR001176      5952 rna-seq    19.277733
-## 5  -9.561331 -8.392591 DRP000425 DRR001175      4448 rna-seq    14.406478
-## 6  -9.541257 11.704278 DRP000499 DRR001634      2100 rna-seq     6.801619
-##   pred_pop missingness   acc
-## 1      AFR     (10,20] 1.000
-## 2      EUR     (10,20] 1.000
-## 3      EUR     (10,20] 0.846
-## 4      SAS     (10,20] 0.846
-## 5      AMR     (10,20] 1.000
-## 6      EAS      (0,10] 1.000</code></pre>
-<pre class="r"><code>head(sraPre)</code></pre>
-<pre><code>##          Run Assay.Type    BioSample         Center.Name Consent
-## 1 SRR1604812    RNA-Seq SAMN03097533 STANFORD UNIVERSITY  public
-## 2 SRR1604816    RNA-Seq SAMN03097530 STANFORD UNIVERSITY  public
-## 3 SRR1604863    RNA-Seq SAMN03097537 STANFORD UNIVERSITY  public
-## 4 SRR1604817    RNA-Seq SAMN03097529 STANFORD UNIVERSITY  public
-## 5 SRR1604819    RNA-Seq SAMN03097535 STANFORD UNIVERSITY  public
-## 6 SRR1604820    RNA-Seq SAMN03097536 STANFORD UNIVERSITY  public
-##   DATASTORE.filetype DATASTORE.provider               DATASTORE.region
-## 1     bam,run.zq,sra         gs,ncbi,s3 gs.US,ncbi.public,s3.us-east-1
-## 2     bam,run.zq,sra         gs,ncbi,s3 gs.US,ncbi.public,s3.us-east-1
-## 3     bam,run.zq,sra         gs,ncbi,s3 gs.US,ncbi.public,s3.us-east-1
-## 4     bam,run.zq,sra         gs,ncbi,s3 gs.US,ncbi.public,s3.us-east-1
-## 5     bam,run.zq,sra         gs,ncbi,s3 gs.US,ncbi.public,s3.us-east-1
-## 6     bam,run.zq,sra         gs,ncbi,s3 gs.US,ncbi.public,s3.us-east-1
-##   Experiment          Instrument LibraryLayout LibrarySelection  LibrarySource
-## 1  SRX726144 Illumina HiSeq 2000        PAIRED             cDNA TRANSCRIPTOMIC
-## 2  SRX726141 Illumina HiSeq 2000        PAIRED             cDNA TRANSCRIPTOMIC
-## 3  SRX726148 Illumina HiSeq 2000        PAIRED             cDNA TRANSCRIPTOMIC
-## 4  SRX726140 Illumina HiSeq 2000        PAIRED             cDNA TRANSCRIPTOMIC
-## 5  SRX726146 Illumina HiSeq 2000        PAIRED             cDNA TRANSCRIPTOMIC
-## 6  SRX726147 Illumina HiSeq 2000        PAIRED             cDNA TRANSCRIPTOMIC
-##       Organism Platform          ReleaseDate Sample.Name SRA.Study AvgSpotLen
-## 1 Homo sapiens ILLUMINA 2015-10-06T00:00:00Z         sh6 SRP048685        186
-## 2 Homo sapiens ILLUMINA 2015-10-06T00:00:00Z         NT6 SRP048685        182
-## 3 Homo sapiens ILLUMINA 2015-10-06T00:00:00Z        psh2 SRP048685        182
-## 4 Homo sapiens ILLUMINA 2015-10-06T00:00:00Z         NT5 SRP048685        176
-## 5 Homo sapiens ILLUMINA 2015-10-06T00:00:00Z        pNT2 SRP048685        174
-## 6 Homo sapiens ILLUMINA 2015-10-06T00:00:00Z        psh1 SRP048685        192
-##        Bases      Bytes  BioProject          create_date version
-## 1 3538802686 1366257215 PRJNA263202 2016-11-22T07:59:00Z       2
-## 2 2210631640  891103928 PRJNA263202 2016-11-22T07:41:00Z       2
-## 3 4444744018 1796810686 PRJNA263202 2016-11-22T07:50:00Z       2
-## 4 3820911471 1566991329 PRJNA263202 2016-11-22T07:55:00Z       2
-## 5 2593675765 1064512051 PRJNA263202 2016-11-22T07:43:00Z       2
-## 6 6208867662 2359176775 PRJNA263202 2016-11-22T07:54:00Z       2
-##   GEO_Accession..exp. source_name Tissue       Age    sex Cell_line  Cell_type
-## 1                                   lung embryonic female WI38hTERT fibroblast
-## 2                                   lung embryonic female WI38hTERT fibroblast
-## 3                                   lung embryonic female WI38hTERT fibroblast
-## 4                                   lung embryonic female WI38hTERT fibroblast
-## 5                                   lung embryonic female WI38hTERT fibroblast
-## 6                                   lung embryonic female WI38hTERT fibroblast
-##   Library.Name BIOMATERIAL_PROVIDER BioSampleModel   Isolate wells_replicate
-## 1          sh6            Carl Mann          Human WI38hTERT                
-## 2          NT6            Carl Mann          Human WI38hTERT                
-## 3         psh2            Carl Mann          Human WI38hTERT                
-## 4          NT5            Carl Mann          Human WI38hTERT                
-## 5         pNT2            Carl Mann          Human WI38hTERT                
-## 6         psh1            Carl Mann          Human WI38hTERT                
-##                       Treatment donor_id Sample_type disease dev_stage lab
-## 1 20uM etoposide shH2AJ\\, rep3                                           
-## 2   20uM etoposide shNT\\, rep3                                           
-## 3        control shH2AJ\\, rep2                                           
-## 4   20uM etoposide shNT\\, rep2                                           
-## 5          control shNT\\, rep2                                           
-## 6        control shH2AJ\\, rep1                                           
-##   health_state Sample_Name ENA.FIRST.PUBLIC..run. ENA.LAST.UPDATE..run.
-## 1                                                                      
-## 2                                                                      
-## 3                                                                      
-## 4                                                                      
-## 5                                                                      
-## 6                                                                      
-##   ENA.FIRST.PUBLIC ENA.LAST.UPDATE External_Id INSDC_center_alias
-## 1                                                                
-## 2                                                                
-## 3                                                                
-## 4                                                                
-## 5                                                                
-## 6                                                                
-##   INSDC_center_name INSDC_first_public INSDC_last_update INSDC_status
-## 1                                                                    
-## 2                                                                    
-## 3                                                                    
-## 4                                                                    
-## 5                                                                    
-## 6                                                                    
-##   Submitter_Id common_name Source DONOR_AGE Broker_name Genotype gender
-## 1                                                                      
-## 2                                                                      
-## 3                                                                      
-## 4                                                                      
-## 5                                                                      
-## 6                                                                      
-##   Organism_part Individual Patient Control days_in_culture Molecule
-## 1                                       NA              NA         
-## 2                                       NA              NA         
-## 3                                       NA              NA         
-## 4                                       NA              NA         
-## 5                                       NA              NA         
-## 6                                       NA              NA         
-##   BIOMATERIAL_TYPE EXTRACTION_PROTOCOL..exp. EXPERIMENT_TYPE..exp.
-## 1                                                                 
-## 2                                                                 
-## 3                                                                 
-## 4                                                                 
-## 5                                                                 
-## 6                                                                 
-##   sample_term_id Time_point breast_cancer_subtype DONOR_ETHNICITY
-## 1                                                                
-## 2                                                                
-## 3                                                                
-## 4                                                                
-## 5                                                                
-## 6                                                                
-##   DONOR_HEALTH_STATUS donor_sex cre_line tissue_type cell_subtype
-## 1                                                                
-## 2                                                                
-## 3                                                                
-## 4                                                                
-## 5                                                                
-## 6                                                                
-##   genotype.variation DNASE_PROTOCOL..exp. Time Donor protocol_used
-## 1                                                                 
-## 2                                                                 
-## 3                                                                 
-## 4                                                                 
-## 5                                                                 
-## 6                                                                 
-##   Experimental_Factor._time..exp. collection_method
-## 1                                                  
-## 2                                                  
-## 3                                                  
-## 4                                                  
-## 5                                                  
-## 6                                                  
-##   Experimental_Factor._organism..exp. TISSUE_DEPOT Group disease_state
-## 1                                                                     
-## 2                                                                     
-## 3                                                                     
-## 4                                                                     
-## 5                                                                     
-## 6                                                                     
-##   assembled_isotype Sequencing_Run shortened_name sort_batch Diagnosis
-## 1                               NA                        NA          
-## 2                               NA                        NA          
-## 3                               NA                        NA          
-## 4                               NA                        NA          
-## 5                               NA                        NA          
-## 6                               NA                        NA          
-##   Experimental_Factor._stimulus..exp. biosample_type     AssemblyName Strain
-## 1                                                    GCA_000001405.13       
-## 2                                                    GCA_000001405.13       
-## 3                                                    GCA_000001405.13       
-## 4                                                    GCA_000001405.13       
-## 5                                                    GCA_000001405.13       
-## 6                                                    GCA_000001405.13       
-##   stimulus agent Batch Passages donor_gender experimental_batch isotype
-## 1                                                                      
-## 2                                                                      
-## 3                                                                      
-## 4                                                                      
-## 5                                                                      
-## 6                                                                      
-##   specificity infection markers PASSAGE_IF_EXPANDED Day vaccine_type
-## 1                                                    NA             
-## 2                                                    NA             
-## 3                                                    NA             
-## 4                                                    NA             
-## 5                                                    NA             
-## 6                                                    NA             
-##   Developmental_stage growth_condition bla_g_1_bedroom_level
-## 1                                                         NA
-## 2                                                         NA
-## 3                                                         NA
-## 4                                                         NA
-## 5                                                         NA
-## 6                                                         NA
-##   bla_g_1_living_room_level der_f_1_bedroom_level der_f_1_living_room_level
-## 1                        NA                    NA                        NA
-## 2                        NA                    NA                        NA
-## 3                        NA                    NA                        NA
-## 4                        NA                    NA                        NA
-## 5                        NA                    NA                        NA
-## 6                        NA                    NA                        NA
-##   der_p_1_bedroom_level der_p_1_living_room_level flow_cell_id
-## 1                    NA                        NA             
-## 2                    NA                        NA             
-## 3                    NA                        NA             
-## 4                    NA                        NA             
-## 5                    NA                        NA             
-## 6                    NA                        NA             
-##   full_cohort_classification Library_ID Phase stim flowcell viral_barcoded
-## 1                                          NA                             
-## 2                                          NA                             
-## 3                                          NA                             
-## 4                                          NA                             
-## 5                                          NA                             
-## 6                                          NA                             
-##   Concentration mll_fusion_type REPLICATE data_subset anonymized_name
-## 1                                                                    
-## 2                                                                    
-## 3                                                                    
-## 4                                                                    
-## 5                                                                    
-## 6                                                                    
-##   background_strain Experimental_Factor._cell_line..exp.
-## 1                                                       
-## 2                                                       
-## 3                                                       
-## 4                                                       
-## 5                                                       
-## 6                                                       
-##   Experimental_Factor._single_cell_identifier..exp. host_body_site
-## 1                                                                 
-## 2                                                                 
-## 3                                                                 
-## 4                                                                 
-## 5                                                                 
-## 6                                                                 
-##   host_phenotype Sequencing_method tumor_status LINE CONDITION treatments
-## 1                                                                        
-## 2                                                                        
-## 3                                                                        
-## 4                                                                        
-## 5                                                                        
-## 6                                                                        
-##   stimulation Experimental_Factor._compound..exp. cell_ID lineage
-## 1                                                                
-## 2                                                                
-## 3                                                                
-## 4                                                                
-## 5                                                                
-## 6                                                                
-##   Age_at_diagnosis
-## 1               NA
-## 2               NA
-## 3               NA
-## 4               NA
-## 5               NA
-## 6               NA</code></pre>
+<pre><code>##          pc1       pc2       pop   sub_pop zero_geno   assay percent_zero pred_pop missingness   acc
+## 1   3.264836 -3.858396 DRP000366 DRR000897      5665 rna-seq    18.348178      AFR     (10,20] 1.000
+## 2  -9.549580 -9.418647 DRP000425 DRR001174      3918 rna-seq    12.689879      EUR     (10,20] 1.000
+## 3  -9.610384 -9.631526 DRP000425 DRR001173      4704 rna-seq    15.235628      EUR     (10,20] 0.846
+## 4 -11.639558 -9.638593 DRP000425 DRR001176      5952 rna-seq    19.277733      SAS     (10,20] 0.846
+## 5  -9.561331 -8.392591 DRP000425 DRR001175      4448 rna-seq    14.406478      AMR     (10,20] 1.000
+## 6  -9.541257 11.704278 DRP000499 DRR001634      2100 rna-seq     6.801619      EAS      (0,10] 1.000</code></pre>
 <pre class="r"><code>head(allSRAFinal)</code></pre>
-<pre><code>##       SRA.Study Center.Name    BioSample     Organism  LibrarySource
-## 27459 SRP001371       NREMC SAMN00113441 Homo sapiens TRANSCRIPTOMIC
-## 29238 SRP001371       NREMC SAMN00204020 Homo sapiens TRANSCRIPTOMIC
-## 29740 SRP001371       NREMC SAMN00204016 Homo sapiens TRANSCRIPTOMIC
-## 48582 SRP120018         GEO SAMN07789039 Homo sapiens TRANSCRIPTOMIC
-## 48583 SRP120018         GEO SAMN07789036 Homo sapiens TRANSCRIPTOMIC
-## 48644 SRP043166         GEO SAMN02852956 Homo sapiens TRANSCRIPTOMIC
-##                 Cell_type   Tissue Cell_line disease ETHNICITY disease_state
-## 27459  CD34 Primary Cells     &lt;NA&gt;      &lt;NA&gt;    None      &lt;NA&gt;          &lt;NA&gt;
-## 29238   CD8 Primary Cells     &lt;NA&gt;      &lt;NA&gt;    None      &lt;NA&gt;          &lt;NA&gt;
-## 29740   CD4 Primary Cells     &lt;NA&gt;      &lt;NA&gt;    None      &lt;NA&gt;          &lt;NA&gt;
-## 48582             HepLPCs     &lt;NA&gt;      &lt;NA&gt;    &lt;NA&gt;     Asian          &lt;NA&gt;
-## 48583 Primary hepatocytes     &lt;NA&gt;      &lt;NA&gt;    &lt;NA&gt;     Asian          &lt;NA&gt;
-## 48644                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;
-##       Diagnosis tissue_type clinical_information      RACE health_state
-## 27459      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;
-## 29238      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;
-## 29740      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;
-## 48582      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;
-## 48583      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;
-## 48644      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt; Caucasian         &lt;NA&gt;
-##       Population DONOR_HEALTH_STATUS DONOR_ETHNICITY reported_race ReleaseDate
-## 27459       &lt;NA&gt;                &lt;NA&gt;       Caucasian          &lt;NA&gt;  2012-04-11
-## 29238       &lt;NA&gt;                &lt;NA&gt;       Caucasian          &lt;NA&gt;  2013-01-04
-## 29740       &lt;NA&gt;                &lt;NA&gt;       Caucasian          &lt;NA&gt;  2013-01-04
-## 48582       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2017-10-30
-## 48583       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2017-10-30
-## 48644       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22
-##               create_date ancestry donor_id Sample_type    source_name
-## 27459 2012-08-12 00:26:00     &lt;NA&gt; RO 01549        &lt;NA&gt;           &lt;NA&gt;
-## 29238 2013-01-04 16:54:00     &lt;NA&gt; RO 01679        &lt;NA&gt;           &lt;NA&gt;
-## 29740 2013-01-04 01:17:00     &lt;NA&gt; RO 01679        &lt;NA&gt;           &lt;NA&gt;
-## 48582 2017-10-24 11:32:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt; Donor_1 TEM P5
-## 48583 2017-10-16 12:24:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;   Donor_2 PHCs
-## 48644 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;      Pterygium
-##       source_material_cell_type source_material Organism_part race.ethnicity
-## 27459                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
-## 29238                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
-## 29740                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
-## 48582                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
-## 48583                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
-## 48644                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
-##       primary_race SAMPLE_TYPE Sampling_site finalRace finalGeography hispanic
-## 27459         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-## 29238         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-## 29740         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-## 48582         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;           Asia     &lt;NA&gt;
-## 48583         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;           Asia     &lt;NA&gt;
-## 48644         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-##             finalSystem finalOrgan
-## 27459            Immune      Blood
-## 29238            Immune      Blood
-## 29740            Immune      Blood
-## 48582           Hepatic      Liver
-## 48583           Hepatic      Liver
-## 48644 Connective tissue       &lt;NA&gt;
-##                                                                          finalSite
-## 27459                                                                        NREMC
-## 29238                                                                        NREMC
-## 29740                                                                        NREMC
-## 48582 Renji Hospital Affiliated to Shanghai Jiaotong University School of Medicine
-## 48583 Renji Hospital Affiliated to Shanghai Jiaotong University School of Medicine
-## 48644                                           Angiogenesis, Oncology Area, CIBIR
-##       finalCountry    finalDisease strictestGeography strictestRace
-## 27459          USA Healthy control               &lt;NA&gt;         White
-## 29238          USA Healthy control               &lt;NA&gt;         White
-## 29740          USA Healthy control               &lt;NA&gt;         White
-## 48582        China            &lt;NA&gt;         Asia (NOS)          &lt;NA&gt;
-## 48583        China            &lt;NA&gt;         Asia (NOS)          &lt;NA&gt;
-## 48644        Spain            &lt;NA&gt;               &lt;NA&gt;         White
-##       strictGeography strictRace backupRace backupHispanic           worldBank
-## 27459            &lt;NA&gt;      White      White           &lt;NA&gt;         High income
-## 29238            &lt;NA&gt;      White      White           &lt;NA&gt;         High income
-## 29740            &lt;NA&gt;      White      White           &lt;NA&gt;         High income
-## 48582            Asia       &lt;NA&gt;       &lt;NA&gt;           &lt;NA&gt; Upper middle income
-## 48583            Asia       &lt;NA&gt;       &lt;NA&gt;           &lt;NA&gt; Upper middle income
-## 48644            &lt;NA&gt;      White      White           &lt;NA&gt;         High income
-##                  worldRegion hasDescriptor hasDisease
-## 27459          North America        Racial        Yes
-## 29238          North America        Racial        Yes
-## 29740          North America        Racial        Yes
-## 48582   East Asia &amp;\nPacific    Geographic         No
-## 48583   East Asia &amp;\nPacific    Geographic         No
-## 48644 Europe &amp;\nCentral Asia        Racial         No</code></pre>
+<pre><code>##       SRA.Study Center.Name    BioSample     Organism  LibrarySource           Cell_type   Tissue Cell_line disease ETHNICITY disease_state Diagnosis tissue_type
+## 48582 SRP120018         GEO SAMN07789039 Homo sapiens TRANSCRIPTOMIC             HepLPCs     &lt;NA&gt;      &lt;NA&gt;    &lt;NA&gt;     Asian          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
+## 48583 SRP120018         GEO SAMN07789036 Homo sapiens TRANSCRIPTOMIC Primary hepatocytes     &lt;NA&gt;      &lt;NA&gt;    &lt;NA&gt;     Asian          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
+## 48644 SRP043166         GEO SAMN02852956 Homo sapiens TRANSCRIPTOMIC                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
+## 48645 SRP043166         GEO SAMN02852957 Homo sapiens TRANSCRIPTOMIC                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
+## 48646 SRP043166         GEO SAMN02852961 Homo sapiens TRANSCRIPTOMIC                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
+## 48647 SRP043166         GEO SAMN02852955 Homo sapiens TRANSCRIPTOMIC                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
+##       clinical_information      RACE health_state Population DONOR_HEALTH_STATUS DONOR_ETHNICITY reported_race ReleaseDate         create_date ancestry donor_id Sample_type
+## 48582                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2017-10-30 2017-10-24 11:32:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
+## 48583                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2017-10-30 2017-10-16 12:24:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
+## 48644                 &lt;NA&gt; Caucasian         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
+## 48645                 &lt;NA&gt; Caucasian         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
+## 48646                 &lt;NA&gt; Caucasian         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
+## 48647                 &lt;NA&gt; Caucasian         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22 2015-12-09 02:15:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
+##          source_name source_material_cell_type source_material Organism_part race.ethnicity primary_race SAMPLE_TYPE Sampling_site finalRace finalGeography hispanic
+## 48582 Donor_1 TEM P5                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;           Asia     &lt;NA&gt;
+## 48583   Donor_2 PHCs                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;           Asia     &lt;NA&gt;
+## 48644      Pterygium                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
+## 48645      Pterygium                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
+## 48646      Pterygium                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
+## 48647      Pterygium                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
+##             finalSystem finalOrgan finalDisease finalCountry strictestGeography strictestRace strictGeography strictRace
+## 48582           hepatic      liver         &lt;NA&gt;        China               Asia          &lt;NA&gt;            Asia       &lt;NA&gt;
+## 48583           hepatic      liver         &lt;NA&gt;        China               Asia          &lt;NA&gt;            Asia       &lt;NA&gt;
+## 48644 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
+## 48645 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
+## 48646 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
+## 48647 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White</code></pre>
 <p>And the sad answer is no… their ID is a run ID, whereas mine is a
 biosample ID… but they should not be hard to link… if I could work out
 what fields I want.</p>
 <p>But! We do have SRA.Study ids in common, so we just need to grab the
-biosample ID that corresponds to Kasper’s run ID, and we are good to go
-for all downstream merging!</p>
+biosample ID that corresponds to Razi et al’s run ID, and we are good to
+go for all downstream merging! Here is a brief sanity check:</p>
 <pre class="r"><code># We start with a test ID from Kasper, and a test ID from me for the same sample:
 kasperID &lt;- &quot;ERR188055&quot; # from Kasper
 igrID &lt;- &quot;SAMEA1573329&quot; # from me -
@@ -720,18 +423,16 @@ igrID &lt;- &quot;SAMEA1573329&quot; # from me -
 kOnion &lt;- entrez_search(db = &quot;sra&quot;, term = kasperID)
 iOnion &lt;- entrez_search(db = &quot;sra&quot;, term = igrID)
 
-kOnion[1]</code></pre>
-<pre><code>## $ids
-## [1] &quot;271238&quot;</code></pre>
-<pre class="r"><code>iOnion[1]</code></pre>
-<pre><code>## $ids
-## [1] &quot;271238&quot; &quot;270473&quot;</code></pre>
+kOnion[1]
+iOnion[1]</code></pre>
 <p>So that can be done, but we gotta grab the right IDs only, which
-makes it harder. Let’s start with two or three studies, then.</p>
-<p>It also seems like we can cut down on the number of calls to NCBI by
-looking at studies instead of each run individually, which should make
-this faster and less embarrassing.</p>
-<pre class="r"><code># Function to get Runs and BioSamples for a BioProject
+makes it harder. Let’s start with two or three studies, then. It also
+seems like we can cut down on the number of calls to NCBI by looking at
+studies instead of each run individually, which should make this faster
+and less embarrassing.</p>
+<pre class="r"><code># This is just the functions, so it&#39;s ok to load them. 
+
+# Function to get Runs and BioSamples for a BioProject
 # Times out after five minutes because sometimes you just gotta know when to give up. Removed the multiple attempts, I&#39;ll just make a list of missing BPs later and rerun.
 get_runs_and_biosamples &lt;- function(bp_id, timeout=180) {
   result &lt;- tryCatch({
@@ -802,158 +503,46 @@ get_runs_and_biosamples &lt;- function(bp_id, timeout=180) {
   return(result)
 }</code></pre>
 <p>The function has been defined and now let’s do a test run with a
-small number of bioProjects (nb actually not run, just included here for
+small number of bioProjects (actually not run, just included here for
 completeness):</p>
 <pre class="r"><code># For debugging:
+# kasperBP &lt;- &quot;DRP000499&quot;
+# testBPs &lt;- lapply(kasperBP, get_runs_and_biosamples) # Runs fine, do a real one now
+
 kasperBPs &lt;- c(&quot;DRP000366&quot;, &quot;DRP000425&quot;, &quot;DRP000499&quot;, &quot;DRP000527&quot;, &quot;DRP000622&quot;, &quot;DRP000665&quot;, &quot;DRP000929&quot;, &quot;DRP000987&quot;, &quot;DRP001048&quot;, &quot;DRP001149&quot;, &quot;DRP001150&quot;, &quot;DRP001194&quot;, &quot;DRP001219&quot;, &quot;DRP001220&quot;, &quot;DRP001280&quot;, &quot;DRP001797&quot;, &quot;DRP001919&quot;, &quot;DRP001953&quot;, &quot;DRP002315&quot;, &quot;DRP005280&quot;) # Has one of the edge cases
-kasperBP &lt;- &quot;DRP000499&quot;
-testBPs &lt;- lapply(kasperBP, get_runs_and_biosamples) # Runs fine, do a real one now</code></pre>
-<pre><code>## [1] &quot;Now processing DRP000499&quot;
-## [1] &quot;Finished processing DRP000499. It took 3.26 seconds.&quot;</code></pre>
-<pre class="r"><code>testBPs &lt;- lapply(kasperBPs, get_runs_and_biosamples)</code></pre>
-<pre><code>## [1] &quot;Now processing DRP000366&quot;
-## [1] &quot;Finished processing DRP000366. It took 3.56 seconds.&quot;
-## [1] &quot;Now processing DRP000425&quot;
-## [1] &quot;Finished processing DRP000425. It took 2.86 seconds.&quot;
-## [1] &quot;Now processing DRP000499&quot;
-## [1] &quot;Finished processing DRP000499. It took 3.03 seconds.&quot;
-## [1] &quot;Now processing DRP000527&quot;
-## [1] &quot;Finished processing DRP000527. It took 3.01 seconds.&quot;
-## [1] &quot;Now processing DRP000622&quot;
-## [1] &quot;Finished processing DRP000622. It took 3.41 seconds.&quot;
-## [1] &quot;Now processing DRP000665&quot;
-## [1] &quot;Finished processing DRP000665. It took 2.88 seconds.&quot;
-## [1] &quot;Now processing DRP000929&quot;
-## [1] &quot;Finished processing DRP000929. It took 2.79 seconds.&quot;
-## [1] &quot;Now processing DRP000987&quot;
-## [1] &quot;Finished processing DRP000987. It took 7.81 seconds.&quot;
-## [1] &quot;Now processing DRP001048&quot;
-## [1] &quot;Finished processing DRP001048. It took 2.7 seconds.&quot;
-## [1] &quot;Now processing DRP001149&quot;
-## [1] &quot;Finished processing DRP001149. It took 5.24 seconds.&quot;
-## [1] &quot;Now processing DRP001150&quot;
-## [1] &quot;Finished processing DRP001150. It took 5.49 seconds.&quot;
-## [1] &quot;Now processing DRP001194&quot;
-## [1] &quot;Finished processing DRP001194. It took 2.97 seconds.&quot;
-## [1] &quot;Now processing DRP001219&quot;
-## [1] &quot;Finished processing DRP001219. It took 2.47 seconds.&quot;
-## [1] &quot;Now processing DRP001220&quot;
-## [1] &quot;Finished processing DRP001220. It took 2.62 seconds.&quot;
-## [1] &quot;Now processing DRP001280&quot;
-## [1] &quot;Finished processing DRP001280. It took 8.08 seconds.&quot;
-## [1] &quot;Now processing DRP001797&quot;
-## [1] &quot;Finished processing DRP001797. It took 12.33 seconds.&quot;
-## [1] &quot;Now processing DRP001919&quot;
-## [1] &quot;Finished processing DRP001919. It took 3.47 seconds.&quot;
-## [1] &quot;Now processing DRP001953&quot;
-## [1] &quot;Finished processing DRP001953. It took 4.98 seconds.&quot;
-## [1] &quot;Now processing DRP002315&quot;
-## [1] &quot;Finished processing DRP002315. It took 3.8 seconds.&quot;
-## [1] &quot;Now processing DRP005280&quot;
-## [1] &quot;Finished processing DRP005280. It took 1.65 seconds.&quot;</code></pre>
-<pre class="r"><code>testIDs &lt;- bind_rows(testBPs)
+testBPs &lt;- lapply(kasperBPs, get_runs_and_biosamples)
+testIDs &lt;- bind_rows(testBPs)
 
 #Let&#39;s compare with what he had. First, an inner_join
 sraToKasper &lt;- inner_join(testIDs, fromKasper, join_by(&quot;Run&quot; == &quot;sub_pop&quot;))
-dim(sraToKasper) # That gives 711 </code></pre>
-<pre><code>## [1] 711  12</code></pre>
-<pre class="r"><code>dim(fromKasper[fromKasper$pop %in% kasperBPs,]) # and that also gives 711... </code></pre>
-<pre><code>## [1] 711  10</code></pre>
-<pre class="r"><code>fromKasperSlim &lt;- fromKasper[fromKasper$pop %in% kasperBPs,]
+dim(sraToKasper) # That gives 711 
 
-table(testIDs$BioProject)</code></pre>
-<pre><code>## 
-## DRP000366 DRP000425 DRP000499 DRP000527 DRP000622 DRP000665 DRP000929 DRP000987 
-##         1         4        21         4        25         7         4       122 
-## DRP001048 DRP001149 DRP001150 DRP001194 DRP001219 DRP001220 DRP001280 DRP001797 
-##         6        59        70        11         1         1        61       343 
-## DRP001919 DRP001953 DRP002315 DRP005280 
-##        26        61         8      1993</code></pre>
-<pre class="r"><code>table(fromKasperSlim$pop)</code></pre>
-<pre><code>## 
-## DRP000366 DRP000425 DRP000499 DRP000527 DRP000622 DRP000665 DRP000929 DRP000987 
-##         1         4        20         4         5         7         4       122 
-## DRP001048 DRP001149 DRP001150 DRP001194 DRP001219 DRP001220 DRP001280 DRP001797 
-##         6        12        70         9         1         1         7       343 
-## DRP001919 DRP001953 DRP002315 DRP005280 
-##        26        53         8         8</code></pre>
-<pre class="r"><code>table(testIDs$BioProject) - table(fromKasperSlim$pop)</code></pre>
-<pre><code>## 
-## DRP000366 DRP000425 DRP000499 DRP000527 DRP000622 DRP000665 DRP000929 DRP000987 
-##         0         0         1         0        20         0         0         0 
-## DRP001048 DRP001149 DRP001150 DRP001194 DRP001219 DRP001220 DRP001280 DRP001797 
-##         0        47         0         2         0         0        54         0 
-## DRP001919 DRP001953 DRP002315 DRP005280 
-##         0         8         0      1985</code></pre>
-<pre class="r"><code>kasperComplete &lt;- inner_join(fromKasperSlim, testIDs, join_by(&quot;sub_pop&quot; == &quot;Run&quot;))
+dim(fromKasper[fromKasper$pop %in% kasperBPs,]) # and that also gives 711... 
+
+fromKasperSlim &lt;- fromKasper[fromKasper$pop %in% kasperBPs,]
+
+table(testIDs$BioProject)
+table(fromKasperSlim$pop)
+
+table(testIDs$BioProject) - table(fromKasperSlim$pop)
+
+kasperComplete &lt;- inner_join(fromKasperSlim, testIDs, join_by(&quot;sub_pop&quot; == &quot;Run&quot;))
 allSRAFinalKasper &lt;- inner_join(allSRAFinal, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;))
 
-dim(allSRAFinalKasper) </code></pre>
-<pre><code>## [1] 340  62</code></pre>
-<pre class="r"><code># But that&#39;s too many rows because we&#39;re operating at the Run level rather than the BioSample level, so let&#39;s clean that mess up:
+dim(allSRAFinalKasper) 
+
+# But that&#39;s too many rows because we&#39;re operating at the Run level rather than the BioSample level, so let&#39;s clean that mess up:
 allSRAFinalKasper &lt;- allSRAFinalKasper %&gt;% distinct(BioSample, .keep_all=TRUE)
-dim(allSRAFinalKasper)</code></pre>
-<pre><code>## [1] 42 62</code></pre>
-<pre class="r"><code># Can&#39;t help it I wanna tabulate already:
-allSRAFinalKasper %&gt;% count(pred_pop, strictestGeography)</code></pre>
-<pre><code>##   pred_pop             strictestGeography  n
-## 1      AFR             Sub-Saharan Africa  8
-## 2      AMR North Africa and\nWestern Asia  1
-## 3      AMR                         Europe  4
-## 4      AMR                           &lt;NA&gt;  2
-## 5      EAS                      East Asia 10
-## 6      EUR                         Europe 15
-## 7      SAS North Africa and\nWestern Asia  2</code></pre>
-<pre class="r"><code>allSRAFinalKasper %&gt;% count(pred_pop, strictestRace)</code></pre>
-<pre><code>##   pred_pop strictestRace  n
-## 1      AFR          &lt;NA&gt;  8
-## 2      AMR      Hispanic  2
-## 3      AMR          &lt;NA&gt;  5
-## 4      EAS          &lt;NA&gt; 10
-## 5      EUR          &lt;NA&gt; 15
-## 6      SAS          &lt;NA&gt;  2</code></pre>
-<pre class="r"><code>allSRAFinalKasper %&gt;% filter(pred_pop == &quot;SAS&quot;)</code></pre>
-<pre><code>##   SRA.Study Center.Name    BioSample     Organism  LibrarySource
-## 1 DRP001797    UT_RCAST SAMD00008997 Homo sapiens TRANSCRIPTOMIC
-## 2 DRP001797    UT_RCAST SAMD00009008 Homo sapiens TRANSCRIPTOMIC
-##                                Cell_type Tissue Cell_line   disease ETHNICITY
-## 1 Human Umbilical Vein Endothelial Cells   &lt;NA&gt;      &lt;NA&gt; pneumonia    Arabic
-## 2 Human Umbilical Vein Endothelial Cells   &lt;NA&gt;      &lt;NA&gt;      &lt;NA&gt;    Arabic
-##   disease_state Diagnosis                      tissue_type clinical_information
-## 1          &lt;NA&gt;      &lt;NA&gt; the endothelium of blood vessels                 &lt;NA&gt;
-## 2          &lt;NA&gt;      &lt;NA&gt; the endothelium of blood vessels                 &lt;NA&gt;
-##   RACE health_state Population DONOR_HEALTH_STATUS DONOR_ETHNICITY
-## 1 &lt;NA&gt;        alive       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;
-## 2 &lt;NA&gt;        alive       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;
-##   reported_race ReleaseDate         create_date ancestry donor_id  Sample_type
-## 1          &lt;NA&gt;  2014-10-16 2014-10-16 13:13:00     &lt;NA&gt;   JTK006 Primary Cell
-## 2          &lt;NA&gt;  2014-10-16 2014-10-16 13:51:00     &lt;NA&gt;   JTK018 Primary Cell
-##   source_name source_material_cell_type source_material Organism_part
-## 1        &lt;NA&gt;                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;
-## 2        &lt;NA&gt;                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;
-##   race.ethnicity primary_race SAMPLE_TYPE Sampling_site finalRace
-## 1           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;
-## 2           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;
-##                   finalGeography hispanic    finalSystem   finalOrgan finalSite
-## 1 North Africa and\nWestern Asia     &lt;NA&gt; Cardiovascular Blood vessel  UT_RCAST
-## 2 North Africa and\nWestern Asia     &lt;NA&gt; Cardiovascular Blood vessel  UT_RCAST
-##   finalCountry    finalDisease             strictestGeography strictestRace
-## 1        Japan     Respiratory North Africa and\nWestern Asia          &lt;NA&gt;
-## 2        Japan Healthy control North Africa and\nWestern Asia          &lt;NA&gt;
-##                  strictGeography strictRace backupRace backupHispanic
-## 1 North Africa and\nWestern Asia       &lt;NA&gt;       &lt;NA&gt;           &lt;NA&gt;
-## 2 North Africa and\nWestern Asia       &lt;NA&gt;       &lt;NA&gt;           &lt;NA&gt;
-##     worldBank          worldRegion hasDescriptor hasDisease       pc1       pc2
-## 1 High income East Asia &amp;\nPacific    Geographic        Yes -15.54874 -8.379916
-## 2 High income East Asia &amp;\nPacific    Geographic        Yes -21.50906 -9.008055
-##         pop   sub_pop zero_geno     assay percent_zero pred_pop missingness
-## 1 DRP001797 DRR023433      8296 scrna-seq     26.86964      SAS     (20,30]
-## 2 DRP001797 DRR023576     13730 scrna-seq     44.46964      SAS     (40,50]
-##     acc BioProject
-## 1 0.692  DRP001797
-## 2 0.923  DRP001797</code></pre>
-<p>Ok this works - took some debugging now. So now let’s run the entire
-set of queries, 100 at a time so it doesn’t completely burn down:</p>
+dim(allSRAFinalKasper)
+
+# Can&#39;t help it I wanna tabulate already:
+allSRAFinalKasper %&gt;% count(pred_pop, strictestGeography)
+allSRAFinalKasper %&gt;% count(pred_pop, strictestRace)
+allSRAFinalKasper %&gt;% filter(pred_pop == &quot;SAS&quot;)</code></pre>
+<p>Ok this works - took some debugging. So now let’s run the entire set
+of queries, 100 at a time so it doesn’t completely burn down. Note that
+this took over 12 hours to run before I added the time out steps
+above:</p>
 <pre class="r"><code># Batch processing function
 process_in_batches &lt;- function(bioProjects, batch_size = 100, delay = 1, file_prefix) {
   # Split the BioProjects list into smaller chunks
@@ -1039,15 +628,123 @@ write.csv(processedBPs, file=&quot;final_bioproject_biosample_runlist.csv&quot;,
 
 # And just so no one complains, here&#39;s what is missing:
 fromKasperCheck %&gt;% count(pred_pop)</code></pre>
-<p>If I was feeling devious I would check:</p>
-<ol style="list-style-type: decimal">
-<li>diversity in his data, after cleaning it down to biosample, 10
-samples per study, and removing obvious cell lines (HeLa etc)</li>
-<li>agreement between him and us, as either alluvial or confusion matrix
-- this can also lead to point 3 below.</li>
-<li>sample swaps in Run IDs, but that’s really just for my own personal
-edification - doesn’t fit with the paper.</li>
-</ol>
+<p>We analyse this at two levels (on its own, in the incorporating_dbgap
+script, and after merging with allSRAFinal; we do the latter here so we
+can go straight into the analyses in the next script)</p>
+<pre class="r"><code># We repeat the steps we took before to do some joining:
+processedBPs &lt;- read.csv(&quot;final_bioproject_biosample_runlist.csv&quot;)
+
+kasperComplete &lt;- inner_join(fromKasper, processedBPs, join_by(&quot;sub_pop&quot; == &quot;Run&quot;))
+allSRAFinal &lt;- left_join(allSRAFinal, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;))
+dim(allSRAFinal) </code></pre>
+<pre><code>## [1] 27661    55</code></pre>
+<pre class="r"><code># But that&#39;s too many rows because we&#39;re operating at the Run level rather than the BioSample level, so let&#39;s clean that mess up:
+allSRAFinal &lt;- allSRAFinal %&gt;% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAFinal)</code></pre>
+<pre><code>## [1] 23935    55</code></pre>
+<pre class="r"><code># Can&#39;t help it I wanna tabulate already:
+allSRAFinal %&gt;% count(pred_pop, strictestGeography)</code></pre>
+<pre><code>##    pred_pop             strictestGeography    n
+## 1                                     &lt;NA&gt;   19
+## 2       AFR                         Europe    6
+## 3       AFR                       Multiple    2
+## 4       AFR                          Other    6
+## 5       AFR              Subsaharan Africa  619
+## 6       AFR                           &lt;NA&gt; 1096
+## 7       AMR                       Americas    1
+## 8       AMR                           Asia    9
+## 9       AMR                         Europe  764
+## 10      AMR                       Multiple    8
+## 11      AMR North Africa and\nWestern Asia    1
+## 12      AMR                          Other    6
+## 13      AMR                     South Asia  115
+## 14      AMR              Subsaharan Africa   30
+## 15      AMR                           &lt;NA&gt; 1795
+## 16      EAS                           Asia   42
+## 17      EAS                      East Asia   94
+## 18      EAS                         Europe    4
+## 19      EAS                       Multiple    1
+## 20      EAS                        Oceania    3
+## 21      EAS                 Southeast Asia    1
+## 22      EAS                           &lt;NA&gt;  268
+## 23      EUR                           Asia    5
+## 24      EUR                      East Asia    8
+## 25      EUR                         Europe 1392
+## 26      EUR                       Multiple   12
+## 27      EUR                          Other    3
+## 28      EUR                     South Asia    1
+## 29      EUR              Subsaharan Africa    5
+## 30      EUR                           &lt;NA&gt; 1768
+## 31      SAS                           Asia    3
+## 32      SAS                         Europe   51
+## 33      SAS                       Multiple    2
+## 34      SAS North Africa and\nWestern Asia    2
+## 35      SAS                          Other    3
+## 36      SAS                     South Asia  135
+## 37      SAS              Subsaharan Africa    8
+## 38      SAS                           &lt;NA&gt;  485
+## 39     &lt;NA&gt;                       Americas  179
+## 40     &lt;NA&gt;                           Asia  247
+## 41     &lt;NA&gt;                      East Asia 1012
+## 42     &lt;NA&gt;                         Europe 3234
+## 43     &lt;NA&gt;                       Multiple  182
+## 44     &lt;NA&gt; North Africa and\nWestern Asia   15
+## 45     &lt;NA&gt;                        Oceania    8
+## 46     &lt;NA&gt;                          Other   44
+## 47     &lt;NA&gt;                     South Asia  467
+## 48     &lt;NA&gt;                 Southeast Asia   48
+## 49     &lt;NA&gt;              Subsaharan Africa 1025
+## 50     &lt;NA&gt;                           &lt;NA&gt; 8701</code></pre>
+<pre class="r"><code>allSRAFinal %&gt;% count(pred_pop, strictestRace)</code></pre>
+<pre><code>##    pred_pop                               strictestRace    n
+## 1                            Black or\nAfrican American    5
+## 2                                                 White   14
+## 3       AFR                                       Asian   80
+## 4       AFR                  Black or\nAfrican American  390
+## 5       AFR                                    Multiple   10
+## 6       AFR                                       Other   66
+## 7       AFR                                       White  541
+## 8       AFR                                        &lt;NA&gt;  642
+## 9       AMR          American Indian and\nAlaska Native    7
+## 10      AMR                                       Asian   65
+## 11      AMR                  Black or\nAfrican American   18
+## 12      AMR                                    Multiple   56
+## 13      AMR                                       Other   49
+## 14      AMR                                       White 1564
+## 15      AMR                                        &lt;NA&gt;  970
+## 16      EAS                                       Asian  251
+## 17      EAS                  Black or\nAfrican American    2
+## 18      EAS                                       Other    2
+## 19      EAS                                       White   11
+## 20      EAS                                        &lt;NA&gt;  147
+## 21      EUR          American Indian and\nAlaska Native    2
+## 22      EUR                                       Asian   20
+## 23      EUR                  Black or\nAfrican American   23
+## 24      EUR                                    Multiple   22
+## 25      EUR                                       Other   34
+## 26      EUR                                       White 1666
+## 27      EUR                                        &lt;NA&gt; 1427
+## 28      SAS          American Indian and\nAlaska Native    3
+## 29      SAS                                       Asian   71
+## 30      SAS                  Black or\nAfrican American    1
+## 31      SAS                                    Multiple   32
+## 32      SAS                                       Other   13
+## 33      SAS                                       White  344
+## 34      SAS                                        &lt;NA&gt;  225
+## 35     &lt;NA&gt;          American Indian and\nAlaska Native   55
+## 36     &lt;NA&gt;                                       Asian  472
+## 37     &lt;NA&gt;                  Black or\nAfrican American 1374
+## 38     &lt;NA&gt;                                    Multiple  117
+## 39     &lt;NA&gt; Native Hawaiian and\nother Pacific Islander    8
+## 40     &lt;NA&gt;                                       Other   53
+## 41     &lt;NA&gt;                                       White 6180
+## 42     &lt;NA&gt;                                        &lt;NA&gt; 6903</code></pre>
+<pre class="r"><code># allSRAFinal %&gt;% filter(pred_pop == &quot;SAS&quot;)
+
+# Clean out some columns, and then onwards to analyses.
+allSRAFinal &lt;- allSRAFinal %&gt;% select(!all_of(c(&quot;pop&quot;, &quot;BioProject&quot;, &quot;acc&quot;, &quot;zero_geno&quot;, &quot;sub_pop&quot;)))
+
+saveRDS(allSRAFinal, file=&quot;20250517_allSRAFinalRazi.rds&quot;)</code></pre>
 
 
 

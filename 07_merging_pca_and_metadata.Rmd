@@ -3,7 +3,7 @@ title: "Merging the PCA with our calls, part 1"
 layout: "post"
 tags: "diversity"
 output: html_document
-date: "2025-05-06"
+date: "`r Sys.Date()`"
 editor_options: 
   chunk_output_type: console
 ---
@@ -44,7 +44,7 @@ head(allSRAFinal)
 
 And the sad answer is no... their ID is a run ID, whereas mine is a biosample ID... but they should not be hard to link... if I could work out what fields I want. 
 
-But! We do have SRA.Study ids in common, so we just need to grab the biosample ID that corresponds to Kasper's run ID, and we are good to go for all downstream merging! Here is a brief sanity check:
+But! We do have SRA.Study ids in common, so we just need to grab the biosample ID that corresponds to Razi et al's run ID, and we are good to go for all downstream merging! Here is a brief sanity check:
 
 ```{r convert-run-to-biosample-1, eval=F}
 # We start with a test ID from Kasper, and a test ID from me for the same sample:
@@ -58,11 +58,11 @@ kOnion[1]
 iOnion[1]
 ```
 
-So that can be done, but we gotta grab the right IDs only, which makes it harder. Let's start with two or three studies, then. 
+So that can be done, but we gotta grab the right IDs only, which makes it harder. Let's start with two or three studies, then. It also seems like we can cut down on the number of calls to NCBI by looking at studies instead of each run individually, which should make this faster and less embarrassing.
 
-It also seems like we can cut down on the number of calls to NCBI by looking at studies instead of each run individually, which should make this faster and less embarrassing.
+```{r from-bio-project-to-everything-functions}
+# This is just the functions, so it's ok to load them. 
 
-```{r from-bio-project-to-everything-1}
 # Function to get Runs and BioSamples for a BioProject
 # Times out after five minutes because sometimes you just gotta know when to give up. Removed the multiple attempts, I'll just make a list of missing BPs later and rerun.
 get_runs_and_biosamples <- function(bp_id, timeout=180) {
@@ -137,14 +137,14 @@ get_runs_and_biosamples <- function(bp_id, timeout=180) {
 
 ```
 
-The function has been defined and now let's do a test run with a small number of bioProjects (nb actually not run, just included here for completeness):
+The function has been defined and now let's do a test run with a small number of bioProjects (actually not run, just included here for completeness):
 
-```{r from-bioproject-to-everything-2, eval=T}
+```{r from-bioproject-to-everything-2, eval=F}
 # For debugging:
-kasperBPs <- c("DRP000366", "DRP000425", "DRP000499", "DRP000527", "DRP000622", "DRP000665", "DRP000929", "DRP000987", "DRP001048", "DRP001149", "DRP001150", "DRP001194", "DRP001219", "DRP001220", "DRP001280", "DRP001797", "DRP001919", "DRP001953", "DRP002315", "DRP005280") # Has one of the edge cases
-kasperBP <- "DRP000499"
-testBPs <- lapply(kasperBP, get_runs_and_biosamples) # Runs fine, do a real one now
+# kasperBP <- "DRP000499"
+# testBPs <- lapply(kasperBP, get_runs_and_biosamples) # Runs fine, do a real one now
 
+kasperBPs <- c("DRP000366", "DRP000425", "DRP000499", "DRP000527", "DRP000622", "DRP000665", "DRP000929", "DRP000987", "DRP001048", "DRP001149", "DRP001150", "DRP001194", "DRP001219", "DRP001220", "DRP001280", "DRP001797", "DRP001919", "DRP001953", "DRP002315", "DRP005280") # Has one of the edge cases
 testBPs <- lapply(kasperBPs, get_runs_and_biosamples)
 testIDs <- bind_rows(testBPs)
 
@@ -176,7 +176,7 @@ allSRAFinalKasper %>% count(pred_pop, strictestRace)
 allSRAFinalKasper %>% filter(pred_pop == "SAS")
 ```
 
-Ok this works - took some debugging now. So now let's run the entire set of queries, 100 at a time so it doesn't completely burn down:
+Ok this works - took some debugging. So now let's run the entire set of queries, 100 at a time so it doesn't completely burn down. Note that this took over 12 hours to run before I added the time out steps above:
 
 ```{r from-bio-project-to-everything-3, eval=F}
 
@@ -270,8 +270,27 @@ write.csv(processedBPs, file="final_bioproject_biosample_runlist.csv", quote=F, 
 fromKasperCheck %>% count(pred_pop)
 ```
 
-If I was feeling devious I would check:
+We analyse this at two levels (on its own, in the incorporating_dbgap script, and after merging with allSRAFinal; we do the latter here so we can go straight into the analyses in the next script)
 
-1. diversity in his data, after cleaning it down to biosample, 10 samples per study, and removing obvious cell lines (HeLa etc)
-2. agreement between him and us, as either alluvial or confusion matrix - this can also lead to point 3 below.
-3. sample swaps in Run IDs, but that's really just for my own personal edification - doesn't fit with the paper.
+```{r merge-into-sra-final}
+# We repeat the steps we took before to do some joining:
+processedBPs <- read.csv("final_bioproject_biosample_runlist.csv")
+
+kasperComplete <- inner_join(fromKasper, processedBPs, join_by("sub_pop" == "Run"))
+allSRAFinal <- left_join(allSRAFinal, kasperComplete, join_by("BioSample" == "BioSample"))
+dim(allSRAFinal) 
+
+# But that's too many rows because we're operating at the Run level rather than the BioSample level, so let's clean that mess up:
+allSRAFinal <- allSRAFinal %>% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAFinal)
+
+# Can't help it I wanna tabulate already:
+allSRAFinal %>% count(pred_pop, strictestGeography)
+allSRAFinal %>% count(pred_pop, strictestRace)
+# allSRAFinal %>% filter(pred_pop == "SAS")
+
+# Clean out some columns, and then onwards to analyses.
+allSRAFinal <- allSRAFinal %>% select(!all_of(c("pop", "BioProject", "acc", "zero_geno", "sub_pop")))
+
+saveRDS(allSRAFinal, file="20250517_allSRAFinalRazi.rds")
+```
