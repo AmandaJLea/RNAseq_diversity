@@ -361,8 +361,98 @@ Bioproject ID to fetch the summary and parse through that. Right now
 this is only run on the ~293 studies that we are keeping, but it’s also
 needed for the bigger dataset of 12k studies… and this will need a
 wrapper etc etc.</p>
+<pre class="r"><code>knitr::opts_knit$set(root.dir=&quot;~/OneDrive - St Vincent&#39;s Institute/Documents/RNA\ Diversity/&quot;, echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get(&quot;root.dir&quot;))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)</code></pre>
+<pre><code>## 
+## Attaching package: &#39;reshape&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:plyr&#39;:
+## 
+##     rename, round_any</code></pre>
+<pre><code>## The following object is masked from &#39;package:data.table&#39;:
+## 
+##     melt</code></pre>
+<pre class="r"><code>library(viridis)</code></pre>
+<pre><code>## Loading required package: viridisLite</code></pre>
+<pre class="r"><code>library(rentrez)
+library(tidyverse)</code></pre>
+<pre><code>## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+## ✔ dplyr     1.1.4     ✔ readr     2.1.5
+## ✔ forcats   1.0.0     ✔ stringr   1.5.1
+## ✔ lubridate 1.9.3     ✔ tibble    3.2.1
+## ✔ purrr     1.0.2     ✔ tidyr     1.3.1</code></pre>
+<pre><code>## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+## ✖ dplyr::arrange()     masks plyr::arrange()
+## ✖ dplyr::between()     masks data.table::between()
+## ✖ purrr::compact()     masks plyr::compact()
+## ✖ dplyr::count()       masks plyr::count()
+## ✖ dplyr::desc()        masks plyr::desc()
+## ✖ tidyr::expand()      masks reshape::expand()
+## ✖ dplyr::failwith()    masks plyr::failwith()
+## ✖ dplyr::filter()      masks stats::filter()
+## ✖ dplyr::first()       masks data.table::first()
+## ✖ lubridate::hour()    masks data.table::hour()
+## ✖ dplyr::id()          masks plyr::id()
+## ✖ lubridate::isoweek() masks data.table::isoweek()
+## ✖ dplyr::lag()         masks stats::lag()
+## ✖ dplyr::last()        masks data.table::last()
+## ✖ lubridate::mday()    masks data.table::mday()
+## ✖ lubridate::minute()  masks data.table::minute()
+## ✖ lubridate::month()   masks data.table::month()
+## ✖ dplyr::mutate()      masks plyr::mutate()
+## ✖ lubridate::quarter() masks data.table::quarter()
+## ✖ dplyr::rename()      masks reshape::rename(), plyr::rename()
+## ✖ lubridate::second()  masks data.table::second()
+## ✖ lubridate::stamp()   masks reshape::stamp()
+## ✖ dplyr::summarise()   masks plyr::summarise()
+## ✖ dplyr::summarize()   masks plyr::summarize()
+## ✖ purrr::transpose()   masks data.table::transpose()
+## ✖ lubridate::wday()    masks data.table::wday()
+## ✖ lubridate::week()    masks data.table::week()
+## ✖ lubridate::yday()    masks data.table::yday()
+## ✖ lubridate::year()    masks data.table::year()
+## ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors</code></pre>
+<pre class="r"><code>options(device = &quot;quartz&quot;)
+
+allSRAFinal &lt;- readRDS(&quot;20250517_allSRAAncestryTissuesDisease.rds&quot;)</code></pre>
 <p>Grab all the SRA IDs that were deposited by GEO and let’s figure out
-where we go from there…</p>
+where we go from there… (Note eval = F for ease of rendering)</p>
+<pre class="r"><code>length(unique(allSRAFinal$Center.Name))
+
+siteStudy &lt;- allSRAFinal %&gt;% count(Center.Name, SRA.Study)
+geoStudies &lt;- siteStudy[siteStudy$Center.Name %in% &quot;GEO&quot;,]$SRA.Study 
+
+# This took forever to fix but...
+getBPid &lt;- sapply(geoStudies, function(x) entrez_link(dbfrom=&quot;sra&quot;, id=entrez_search(db = &quot;sra&quot;, term = x)$ids[1], db=&quot;all&quot;)$links$sra_bioproject_all)
+getBPid
+
+getSubmitter &lt;- sapply(getBPid, function(x) extract_from_esummary(entrez_summary(db=&quot;bioproject&quot;, x[[1]][1]), &quot;submitter_organization&quot;))
+getSubmitter
+
+getSubmitterdf &lt;- as.data.frame(getSubmitter)
+getSubmitterdf$SRA &lt;- rownames(getSubmitterdf)
+
+# And now we add that info back to the relevant column, and replace the GEO calls. I honestly can&#39;t remember if I need to vectorise or not but whatever. 
+allSRAFinal$finalSite &lt;- NA
+
+for (i in 1:nrow(getSubmitterdf)){
+  allSRAFinal[allSRAFinal$SRA.Study %in% getSubmitterdf$SRA[i],]$finalSite &lt;- getSubmitterdf$getSubmitter[i]    
+}
+
+allSRAFinal$finalSite &lt;- coalesce(allSRAFinal$finalSite, allSRAFinal$Center.Name)
+
+# Is GEO really gone???
+length(unique(allSRAFinal$Center.Name))
+length(unique(allSRAFinal$finalSite)) # Well that definitely increased, so that&#39;s good. 
+
+siteTable &lt;- allSRAFinal %&gt;% count(finalSite, SRA.Study)
+
+# I still need to work out what is in what country, but at least I have a single table... 
+write.table(siteTable, file=&quot;20250517_final_Site_descriptors_raw.tsv&quot;, quote=F, row.names=F, sep=&quot;\t&quot;)</code></pre>
 <p>I decided that working out the country was easiest if done by hand at
 this level of resolution, but see the scripts on using the ROR data for
 this purpose (worth a comparison)</p>
@@ -406,7 +496,7 @@ for (i in 1:nrow(countryList)){
 ##      Israel 
 ##          11</code></pre>
 <pre class="r"><code># Anyhow, let&#39;s make sure we only do this once:
-saveRDS(allSRAFinal, &quot;20250517_allSRAFinalTissuesDiseaseCenters.rds&quot;)</code></pre>
+saveRDS(allSRAFinal, &quot;20250517_allSRAAncestryTissuesDiseaseCenters.rds&quot;)</code></pre>
 
 
 

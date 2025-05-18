@@ -11,7 +11,7 @@ We wanted to work out who is sequencing what, and for that we need to fill in a 
 
 First we convert from SRA.Study to Bioproject ID. Then we use the Bioproject ID to fetch the summary and parse through that. Right now this is only run on the ~293 studies that we are keeping, but it's also needed for the bigger dataset of 12k studies... and this will need a wrapper etc etc. 
 
-```{r setup, include=F}
+```{r setup, include=T}
 knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
 # But we also have to do this manually because R studio is stupid: 
 setwd(knitr::opts_knit$get("root.dir"))
@@ -28,9 +28,9 @@ options(device = "quartz")
 allSRAFinal <- readRDS("20250517_allSRAAncestryTissuesDisease.rds")
 ```
 
-Grab all the SRA IDs that were deposited by GEO and let's figure out where we go from there...
+Grab all the SRA IDs that were deposited by GEO and let's figure out where we go from there... (Note eval = F for ease of rendering)
 
-```{r depositing-site, include=F, eval=F}
+```{r depositing-site, include=T, eval=F}
 length(unique(allSRAFinal$Center.Name))
 
 siteStudy <- allSRAFinal %>% count(Center.Name, SRA.Study)
