@@ -40,6 +40,11 @@ allSRAFinal <- readRDS("20250517_allSRAFinal.rds") #
 
 head(fromKasper)
 head(allSRAFinal)
+
+# Let's recode those annoying samples without pop label so we can drop them whenever we need to. 
+fromKasper <- fromKasper %>%
+  mutate(pred_pop = na_if(pred_pop, "")) %>%
+  filter(!is.na(pred_pop))
 ```
 
 And the sad answer is no... their ID is a run ID, whereas mine is a biosample ID... but they should not be hard to link... if I could work out what fields I want. 
@@ -322,14 +327,44 @@ length(unique(allSRAFilt$BioSample))
 # And now we merge - this just keeps one row per BioSample considering only those we liked, which is what we want to do later on. 
 allSRAFiltKasperLeft <- left_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T)
 dim(allSRAFiltKasperLeft)
+allSRAFiltKasperLeft %>% count(pred_pop) # And these are the pop numbers
+allSRAFiltKasperLeft %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
 allSRAFiltKasperLeft %>% drop_na(pred_pop) %>% nrow()
 
 allSRAFiltKasperRight <- right_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T)
 dim(allSRAFiltKasperRight)
+allSRAFiltKasperRight %>% count(pred_pop) # And these are the pop numbers
+allSRAFiltKasperRight %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
 
-# There's about 22k samples in recount that are not in our dump, and I'm curious as to why, but not curious enough to go digging deeply.
+# There's about 22k samples in recount that are not in our dump, and I'm curious as to why, but not curious enough to go digging deeply. Suspect most of them got dropped when I took out the studies with < 10 Biosamples
 dim(allSRAFiltKasperRight)[1] - allSRAFiltKasperLeft %>% drop_na(pred_pop) %>% nrow()
 
-saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join.rds")
 saveRDS(allSRAFiltKasperRight, file="20250518_allSRACleanRazi_right_join.rds")
+
+# Before we finish writing things out, however, we want to ditch those samples that we know are derived from primary cell lines. Because we only have that info available for the rows that are also present in the SRA dump, we have to work on the left join only.  
+
+allSRAFiltKasperLeft %>% count(is.na(Cell_line))
+popularCellLines <- allSRAFiltKasperLeft %>% count(Cell_line, sort=T) 
+dim(popularCellLines)
+
+head(popularCellLines, n=20)
+
+# Let's clean up, then - and also get rid of all the samples without a genotype prediction from their data
+allSRAFiltKasperLeft <- allSRAFiltKasperLeft %>% 
+  filter(is.na(Cell_line)) %>%
+  filter(!is.na(pred_pop))
+dim(allSRAFiltKasperLeft)  
+allSRAFiltKasperLeft %>% count(pred_pop) # And these are the pop numbers
+allSRAFiltKasperLeft %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
+  
+saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join.rds")
+```
+
+Finally, for the paper we will also want to be able to report how many of Kasper's samples we dropped because of cell line issues. Rather than have to generate that somewhere else, I do a quick inner join instead of a left join, and then just tabulate the cell lines:
+
+```{r final-razi-number}
+cellLineTable <- inner_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T) %>% drop_na(Cell_line) %>% count(Cell_line, sort=T) 
+
+head(cellLineTable, n=10)
+cellLineTable %>% summarise(sum(n))
 ```

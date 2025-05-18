@@ -410,6 +410,10 @@ head(fromKasper)</code></pre>
 ## 48645 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
 ## 48646 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
 ## 48647 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White</code></pre>
+<pre class="r"><code># Let&#39;s recode those annoying samples without pop label so we can drop them whenever we need to. 
+fromKasper &lt;- fromKasper %&gt;%
+  mutate(pred_pop = na_if(pred_pop, &quot;&quot;)) %&gt;%
+  filter(!is.na(pred_pop))</code></pre>
 <p>And the sad answer is no… their ID is a run ID, whereas mine is a
 biosample ID… but they should not be hard to link… if I could work out
 what fields I want.</p>
@@ -637,7 +641,7 @@ processedBPs &lt;- read.csv(&quot;final_bioproject_biosample_runlist.csv&quot;)
 kasperComplete &lt;- inner_join(fromKasper, processedBPs, join_by(&quot;sub_pop&quot; == &quot;Run&quot;))
 allSRAFinal &lt;- left_join(allSRAFinal, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;))
 dim(allSRAFinal) </code></pre>
-<pre><code>## [1] 27661    55</code></pre>
+<pre><code>## [1] 27660    55</code></pre>
 <pre class="r"><code># But that&#39;s too many rows because we&#39;re operating at the Run level rather than the BioSample level, so let&#39;s clean that mess up:
 allSRAFinal &lt;- allSRAFinal %&gt;% distinct(BioSample, .keep_all=TRUE)
 dim(allSRAFinal)</code></pre>
@@ -645,100 +649,97 @@ dim(allSRAFinal)</code></pre>
 <pre class="r"><code># Can&#39;t help it I wanna tabulate already:
 allSRAFinal %&gt;% count(pred_pop, strictestGeography)</code></pre>
 <pre><code>##    pred_pop             strictestGeography    n
-## 1                                     &lt;NA&gt;   19
-## 2       AFR                         Europe    6
-## 3       AFR                       Multiple    2
-## 4       AFR                          Other    6
-## 5       AFR              Subsaharan Africa  619
-## 6       AFR                           &lt;NA&gt; 1096
-## 7       AMR                       Americas    1
-## 8       AMR                           Asia    9
-## 9       AMR                         Europe  764
-## 10      AMR                       Multiple    8
-## 11      AMR North Africa and\nWestern Asia    1
-## 12      AMR                          Other    6
-## 13      AMR                     South Asia  115
-## 14      AMR              Subsaharan Africa   30
-## 15      AMR                           &lt;NA&gt; 1795
-## 16      EAS                           Asia   42
-## 17      EAS                      East Asia   94
-## 18      EAS                         Europe    4
-## 19      EAS                       Multiple    1
-## 20      EAS                        Oceania    3
-## 21      EAS                 Southeast Asia    1
-## 22      EAS                           &lt;NA&gt;  268
-## 23      EUR                           Asia    5
-## 24      EUR                      East Asia    8
-## 25      EUR                         Europe 1392
-## 26      EUR                       Multiple   12
-## 27      EUR                          Other    3
-## 28      EUR                     South Asia    1
-## 29      EUR              Subsaharan Africa    5
-## 30      EUR                           &lt;NA&gt; 1768
-## 31      SAS                           Asia    3
-## 32      SAS                         Europe   51
-## 33      SAS                       Multiple    2
-## 34      SAS North Africa and\nWestern Asia    2
-## 35      SAS                          Other    3
-## 36      SAS                     South Asia  135
-## 37      SAS              Subsaharan Africa    8
-## 38      SAS                           &lt;NA&gt;  485
-## 39     &lt;NA&gt;                       Americas  179
-## 40     &lt;NA&gt;                           Asia  247
-## 41     &lt;NA&gt;                      East Asia 1012
-## 42     &lt;NA&gt;                         Europe 3234
-## 43     &lt;NA&gt;                       Multiple  182
-## 44     &lt;NA&gt; North Africa and\nWestern Asia   15
-## 45     &lt;NA&gt;                        Oceania    8
-## 46     &lt;NA&gt;                          Other   44
-## 47     &lt;NA&gt;                     South Asia  467
-## 48     &lt;NA&gt;                 Southeast Asia   48
-## 49     &lt;NA&gt;              Subsaharan Africa 1025
-## 50     &lt;NA&gt;                           &lt;NA&gt; 8701</code></pre>
+## 1       AFR                         Europe    6
+## 2       AFR                       Multiple    2
+## 3       AFR                          Other    6
+## 4       AFR              Subsaharan Africa  619
+## 5       AFR                           &lt;NA&gt; 1096
+## 6       AMR                       Americas    1
+## 7       AMR                           Asia    9
+## 8       AMR                         Europe  764
+## 9       AMR                       Multiple    8
+## 10      AMR North Africa and\nWestern Asia    1
+## 11      AMR                          Other    6
+## 12      AMR                     South Asia  115
+## 13      AMR              Subsaharan Africa   30
+## 14      AMR                           &lt;NA&gt; 1795
+## 15      EAS                           Asia   42
+## 16      EAS                      East Asia   94
+## 17      EAS                         Europe    4
+## 18      EAS                       Multiple    1
+## 19      EAS                        Oceania    3
+## 20      EAS                 Southeast Asia    1
+## 21      EAS                           &lt;NA&gt;  268
+## 22      EUR                           Asia    5
+## 23      EUR                      East Asia    8
+## 24      EUR                         Europe 1392
+## 25      EUR                       Multiple   12
+## 26      EUR                          Other    3
+## 27      EUR                     South Asia    1
+## 28      EUR              Subsaharan Africa    5
+## 29      EUR                           &lt;NA&gt; 1768
+## 30      SAS                           Asia    3
+## 31      SAS                         Europe   51
+## 32      SAS                       Multiple    2
+## 33      SAS North Africa and\nWestern Asia    2
+## 34      SAS                          Other    3
+## 35      SAS                     South Asia  135
+## 36      SAS              Subsaharan Africa    8
+## 37      SAS                           &lt;NA&gt;  485
+## 38     &lt;NA&gt;                       Americas  179
+## 39     &lt;NA&gt;                           Asia  247
+## 40     &lt;NA&gt;                      East Asia 1012
+## 41     &lt;NA&gt;                         Europe 3234
+## 42     &lt;NA&gt;                       Multiple  182
+## 43     &lt;NA&gt; North Africa and\nWestern Asia   15
+## 44     &lt;NA&gt;                        Oceania    8
+## 45     &lt;NA&gt;                          Other   44
+## 46     &lt;NA&gt;                     South Asia  467
+## 47     &lt;NA&gt;                 Southeast Asia   48
+## 48     &lt;NA&gt;              Subsaharan Africa 1025
+## 49     &lt;NA&gt;                           &lt;NA&gt; 8720</code></pre>
 <pre class="r"><code>allSRAFinal %&gt;% count(pred_pop, strictestRace)</code></pre>
 <pre><code>##    pred_pop                               strictestRace    n
-## 1                            Black or\nAfrican American    5
-## 2                                                 White   14
-## 3       AFR                                       Asian   80
-## 4       AFR                  Black or\nAfrican American  390
-## 5       AFR                                    Multiple   10
-## 6       AFR                                       Other   66
-## 7       AFR                                       White  541
-## 8       AFR                                        &lt;NA&gt;  642
-## 9       AMR          American Indian and\nAlaska Native    7
-## 10      AMR                                       Asian   65
-## 11      AMR                  Black or\nAfrican American   18
-## 12      AMR                                    Multiple   56
-## 13      AMR                                       Other   49
-## 14      AMR                                       White 1564
-## 15      AMR                                        &lt;NA&gt;  970
-## 16      EAS                                       Asian  251
-## 17      EAS                  Black or\nAfrican American    2
-## 18      EAS                                       Other    2
-## 19      EAS                                       White   11
-## 20      EAS                                        &lt;NA&gt;  147
-## 21      EUR          American Indian and\nAlaska Native    2
-## 22      EUR                                       Asian   20
-## 23      EUR                  Black or\nAfrican American   23
-## 24      EUR                                    Multiple   22
-## 25      EUR                                       Other   34
-## 26      EUR                                       White 1666
-## 27      EUR                                        &lt;NA&gt; 1427
-## 28      SAS          American Indian and\nAlaska Native    3
-## 29      SAS                                       Asian   71
-## 30      SAS                  Black or\nAfrican American    1
-## 31      SAS                                    Multiple   32
-## 32      SAS                                       Other   13
-## 33      SAS                                       White  344
-## 34      SAS                                        &lt;NA&gt;  225
-## 35     &lt;NA&gt;          American Indian and\nAlaska Native   55
-## 36     &lt;NA&gt;                                       Asian  472
-## 37     &lt;NA&gt;                  Black or\nAfrican American 1374
-## 38     &lt;NA&gt;                                    Multiple  117
-## 39     &lt;NA&gt; Native Hawaiian and\nother Pacific Islander    8
-## 40     &lt;NA&gt;                                       Other   53
-## 41     &lt;NA&gt;                                       White 6180
-## 42     &lt;NA&gt;                                        &lt;NA&gt; 6903</code></pre>
+## 1       AFR                                       Asian   80
+## 2       AFR                  Black or\nAfrican American  390
+## 3       AFR                                    Multiple   10
+## 4       AFR                                       Other   66
+## 5       AFR                                       White  541
+## 6       AFR                                        &lt;NA&gt;  642
+## 7       AMR          American Indian and\nAlaska Native    7
+## 8       AMR                                       Asian   65
+## 9       AMR                  Black or\nAfrican American   18
+## 10      AMR                                    Multiple   56
+## 11      AMR                                       Other   49
+## 12      AMR                                       White 1564
+## 13      AMR                                        &lt;NA&gt;  970
+## 14      EAS                                       Asian  251
+## 15      EAS                  Black or\nAfrican American    2
+## 16      EAS                                       Other    2
+## 17      EAS                                       White   11
+## 18      EAS                                        &lt;NA&gt;  147
+## 19      EUR          American Indian and\nAlaska Native    2
+## 20      EUR                                       Asian   20
+## 21      EUR                  Black or\nAfrican American   23
+## 22      EUR                                    Multiple   22
+## 23      EUR                                       Other   34
+## 24      EUR                                       White 1666
+## 25      EUR                                        &lt;NA&gt; 1427
+## 26      SAS          American Indian and\nAlaska Native    3
+## 27      SAS                                       Asian   71
+## 28      SAS                  Black or\nAfrican American    1
+## 29      SAS                                    Multiple   32
+## 30      SAS                                       Other   13
+## 31      SAS                                       White  344
+## 32      SAS                                        &lt;NA&gt;  225
+## 33     &lt;NA&gt;          American Indian and\nAlaska Native   55
+## 34     &lt;NA&gt;                                       Asian  472
+## 35     &lt;NA&gt;                  Black or\nAfrican American 1379
+## 36     &lt;NA&gt;                                    Multiple  117
+## 37     &lt;NA&gt; Native Hawaiian and\nother Pacific Islander    8
+## 38     &lt;NA&gt;                                       Other   53
+## 39     &lt;NA&gt;                                       White 6194
+## 40     &lt;NA&gt;                                        &lt;NA&gt; 6903</code></pre>
 <pre class="r"><code># allSRAFinal %&gt;% filter(pred_pop == &quot;SAS&quot;)
 
 # Clean out some columns, and then onwards to analyses.
@@ -781,16 +782,106 @@ length(unique(allSRAFilt$BioSample))</code></pre>
 allSRAFiltKasperLeft &lt;- left_join(allSRAFilt, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;)) %&gt;% distinct(BioSample, .keep_all=T)
 dim(allSRAFiltKasperLeft)</code></pre>
 <pre><code>## [1] 747964     56</code></pre>
+<pre class="r"><code>allSRAFiltKasperLeft %&gt;% count(pred_pop) # And these are the pop numbers</code></pre>
+<pre><code>##   pred_pop      n
+## 1      AFR  29975
+## 2      AMR  65311
+## 3      EAS  28922
+## 4      EUR  85887
+## 5      SAS  16845
+## 6     &lt;NA&gt; 521024</code></pre>
+<pre class="r"><code>allSRAFiltKasperLeft %&gt;% count(pred_pop) %&gt;% summarise(sum(n)) # And these are the pop numbers</code></pre>
+<pre><code>##   sum(n)
+## 1 747964</code></pre>
 <pre class="r"><code>allSRAFiltKasperLeft %&gt;% drop_na(pred_pop) %&gt;% nrow()</code></pre>
-<pre><code>## [1] 232023</code></pre>
+<pre><code>## [1] 226940</code></pre>
 <pre class="r"><code>allSRAFiltKasperRight &lt;- right_join(allSRAFilt, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;)) %&gt;% distinct(BioSample, .keep_all=T)
 dim(allSRAFiltKasperRight)</code></pre>
-<pre><code>## [1] 254327     56</code></pre>
-<pre class="r"><code># There&#39;s about 22k samples in recount that are not in our dump, and I&#39;m curious as to why, but not curious enough to go digging deeply.
+<pre><code>## [1] 249063     56</code></pre>
+<pre class="r"><code>allSRAFiltKasperRight %&gt;% count(pred_pop) # And these are the pop numbers</code></pre>
+<pre><code>##   pred_pop     n
+## 1      AFR 32658
+## 2      AMR 72178
+## 3      EAS 31732
+## 4      EUR 94600
+## 5      SAS 17895</code></pre>
+<pre class="r"><code>allSRAFiltKasperRight %&gt;% count(pred_pop) %&gt;% summarise(sum(n)) # And these are the pop numbers</code></pre>
+<pre><code>##   sum(n)
+## 1 249063</code></pre>
+<pre class="r"><code># There&#39;s about 22k samples in recount that are not in our dump, and I&#39;m curious as to why, but not curious enough to go digging deeply. Suspect most of them got dropped when I took out the studies with &lt; 10 Biosamples
 dim(allSRAFiltKasperRight)[1] - allSRAFiltKasperLeft %&gt;% drop_na(pred_pop) %&gt;% nrow()</code></pre>
-<pre><code>## [1] 22304</code></pre>
-<pre class="r"><code>saveRDS(allSRAFiltKasperLeft, file=&quot;20250518_allSRACleanRazi_left_join.rds&quot;)
-saveRDS(allSRAFiltKasperRight, file=&quot;20250518_allSRACleanRazi_right_join.rds&quot;)</code></pre>
+<pre><code>## [1] 22123</code></pre>
+<pre class="r"><code>saveRDS(allSRAFiltKasperRight, file=&quot;20250518_allSRACleanRazi_right_join.rds&quot;)
+
+# Before we finish writing things out, however, we want to ditch those samples that we know are derived from primary cell lines. Because we only have that info available for the rows that are also present in the SRA dump, we have to work on the left join only.  
+
+allSRAFiltKasperLeft %&gt;% count(is.na(Cell_line))</code></pre>
+<pre><code>##   is.na(Cell_line)      n
+## 1            FALSE 178349
+## 2             TRUE 569615</code></pre>
+<pre class="r"><code>popularCellLines &lt;- allSRAFiltKasperLeft %&gt;% count(Cell_line, sort=T) 
+dim(popularCellLines)</code></pre>
+<pre><code>## [1] 9292    2</code></pre>
+<pre class="r"><code>head(popularCellLines, n=20)</code></pre>
+<pre><code>##        Cell_line      n
+## 1           &lt;NA&gt; 569615
+## 2         HepaRG   8697
+## 3          HepG2   5224
+## 4           MCF7   3719
+## 5       SUM149PT   3542
+## 6             H9   3364
+## 7         HCT116   3245
+## 8           A549   3160
+## 9        HEK293T   2855
+## 10          HeLa   2808
+## 11          K562   2578
+## 12          huh7   2260
+## 13          T47D   2192
+## 14          ES03   2153
+## 15          U2OS   2151
+## 16         MCF-7   1808
+## 17        HEK293   1689
+## 18 HEK293T Cells   1669
+## 19         LNCaP   1615
+## 20         SBAD3   1520</code></pre>
+<pre class="r"><code># Let&#39;s clean up, then - and also get rid of all the samples without a genotype prediction from their data
+allSRAFiltKasperLeft &lt;- allSRAFiltKasperLeft %&gt;% 
+  filter(is.na(Cell_line)) %&gt;%
+  filter(!is.na(pred_pop))
+dim(allSRAFiltKasperLeft)  </code></pre>
+<pre><code>## [1] 170405     56</code></pre>
+<pre class="r"><code>allSRAFiltKasperLeft %&gt;% count(pred_pop) # And these are the pop numbers</code></pre>
+<pre><code>##   pred_pop     n
+## 1      AFR 24196
+## 2      AMR 47601
+## 3      EAS 20677
+## 4      EUR 64348
+## 5      SAS 13583</code></pre>
+<pre class="r"><code>allSRAFiltKasperLeft %&gt;% count(pred_pop) %&gt;% summarise(sum(n)) # And these are the pop numbers</code></pre>
+<pre><code>##   sum(n)
+## 1 170405</code></pre>
+<pre class="r"><code>saveRDS(allSRAFiltKasperLeft, file=&quot;20250518_allSRACleanRazi_left_join.rds&quot;)</code></pre>
+<p>Finally, for the paper we will also want to be able to report how
+many of Kasper’s samples we dropped because of cell line issues. Rather
+than have to generate that somewhere else, I do a quick inner join
+instead of a left join, and then just tabulate the cell lines:</p>
+<pre class="r"><code>cellLineTable &lt;- inner_join(allSRAFilt, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;)) %&gt;% distinct(BioSample, .keep_all=T) %&gt;% drop_na(Cell_line) %&gt;% count(Cell_line, sort=T) 
+
+head(cellLineTable, n=10)</code></pre>
+<pre><code>##           Cell_line    n
+## 1            HepaRG 8513
+## 2              huh7 2216
+## 3                H9 2120
+## 4              K562 1297
+## 5              HeLa 1133
+## 6              T47D 1036
+## 7  HPSI0813i-fpdm_2 1003
+## 8             HepG2  865
+## 9              MCF7  771
+## 10           HEK293  753</code></pre>
+<pre class="r"><code>cellLineTable %&gt;% summarise(sum(n))</code></pre>
+<pre><code>##   sum(n)
+## 1  56535</code></pre>
 
 
 
