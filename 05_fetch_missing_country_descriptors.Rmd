@@ -25,7 +25,7 @@ library(tidyverse)
 
 options(device = "quartz")
 
-allSRAFinal <- readRDS("20250517_allSRAFinalTissuesDisease.rds")
+allSRAFinal <- readRDS("20250517_allSRAAncestryTissuesDisease.rds")
 ```
 
 Grab all the SRA IDs that were deposited by GEO and let's figure out where we go from there...
@@ -82,5 +82,5 @@ for (i in 1:nrow(countryList)){
 sort(table(allSRAFinal$finalCountry), decreasing=T)
 
 # Anyhow, let's make sure we only do this once:
-saveRDS(allSRAFinal, "20250517_allSRAFinalTissuesDiseaseCenters.rds")
+saveRDS(allSRAFinal, "20250517_allSRAAncestryTissuesDiseaseCenters.rds")
 ```

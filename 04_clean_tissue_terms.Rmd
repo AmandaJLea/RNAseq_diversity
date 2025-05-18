@@ -23,7 +23,7 @@ library(reshape)
 library(tidyverse)
 library(viridis)
 
-allSRAFinal <- readRDS("20250517_allSRAFinal.rds")
+allSRAFinal <- readRDS("20250517_allSRAAncestry.rds")
 
 ```
 
@@ -548,7 +548,7 @@ table(sourceSystemMismatches$SRA.Study)
 
 # Yep, not too fussed. So now we can remove some of the temp columns and write this out
 allSRAFinal <- allSRAFinal[,-(37:46)]
-saveRDS(allSRAFinal, "20250517_allSRAFinalTissues.rds")
+saveRDS(allSRAFinal, "20250517_allSRAAncestryTissues.rds")
 ```
 
 And now my other nemesis... disease state. There's a lot of cancer info already in there, but what else is there?
@@ -627,6 +627,6 @@ table(allSRAFinal$finalDisease)
 allSRAFinal[!is.na(allSRAFinal$health_state) & !is.na(allSRAFinal$disease),]
 
 # Yep looks good, now we can really analyse things:
-saveRDS(allSRAFinal, "20250517_allSRAFinalTissuesDisease.rds")
+saveRDS(allSRAFinal, "20250517_allSRAAncestryTissuesDisease.rds")
 ```
 

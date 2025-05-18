@@ -423,6 +423,6 @@ not_all_na <- function(x) any(!is.na(x))
 allSRAFinal <- allSRAFinal %>% select(where(not_all_na))
 dim(allSRAFinal)
 
-saveRDS(allSRAFinal, file="20250517_allSRAFinal.rds")
+saveRDS(allSRAFinal, file="20250517_allSRAAncestry.rds")
 ```
 
