@@ -8,7 +8,7 @@ editor_options:
 date: "`r Sys.Date()`"
 ---
 
-Files from Amanda and Grace are in different formats than the SRA one, so they need to be processed so we can do some joint plotting etc. Note that the analyses in this file haven't changed since it was last run, but I've updated the file names of the output to reflect the new date of running. 
+Files from Amanda and Grace are in different formats than the SRA one, so they need to be processed so we can do some joint plotting for figures 1 and 2. Nothing has changed in terms of how this is processed but I'm updating file names to be consistent. 
 
 ```{r setup, include=F}
 knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)

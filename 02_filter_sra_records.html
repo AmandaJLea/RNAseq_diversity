@@ -412,9 +412,7 @@ length(unique(allSRAFilt$SRA.Study))</code></pre>
 <pre><code>## [1] 747964</code></pre>
 <pre class="r"><code>nrow(allSRAFilt)</code></pre>
 <pre><code>## [1] 1028005</code></pre>
-<pre class="r"><code>saveRDS(allSRAFilt, file=&quot;20250605_allSRAFilt_10biosamples.rds&quot;)
-
-allSRAFilt &lt;- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
+<pre class="r"><code>allSRAFilt &lt;- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
 
 # And now after cleaning for pop descriptors:
 length(unique(allSRAFilt$SRA.Study))</code></pre>

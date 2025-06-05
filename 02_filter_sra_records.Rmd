@@ -53,8 +53,6 @@ length(unique(allSRAFilt$SRA.Study))
 length(unique(allSRAFilt$BioSample))
 nrow(allSRAFilt)
 
-saveRDS(allSRAFilt, file="20250605_allSRAFilt_10biosamples.rds")
-
 allSRAFilt <- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
 
 # And now after cleaning for pop descriptors:
