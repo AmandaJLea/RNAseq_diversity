@@ -10,7 +10,7 @@
 
 
 
-<meta name="date" content="2025-05-18" />
+<meta name="date" content="2025-06-06" />
 
 <title>Merging the PCA with our calls, part 1</title>
 
@@ -350,7 +350,7 @@ display: none;
 
 
 <h1 class="title toc-ignore">Merging the PCA with our calls, part 1</h1>
-<h4 class="date">2025-05-18</h4>
+<h4 class="date">2025-06-06</h4>
 
 </div>
 
@@ -374,42 +374,84 @@ lol.</p>
 allSRAFinal &lt;- readRDS(&quot;20250517_allSRAFinal.rds&quot;) #
 
 head(fromKasper)</code></pre>
-<pre><code>##          pc1       pc2       pop   sub_pop zero_geno   assay percent_zero pred_pop missingness   acc
-## 1   3.264836 -3.858396 DRP000366 DRR000897      5665 rna-seq    18.348178      AFR     (10,20] 1.000
-## 2  -9.549580 -9.418647 DRP000425 DRR001174      3918 rna-seq    12.689879      EUR     (10,20] 1.000
-## 3  -9.610384 -9.631526 DRP000425 DRR001173      4704 rna-seq    15.235628      EUR     (10,20] 0.846
-## 4 -11.639558 -9.638593 DRP000425 DRR001176      5952 rna-seq    19.277733      SAS     (10,20] 0.846
-## 5  -9.561331 -8.392591 DRP000425 DRR001175      4448 rna-seq    14.406478      AMR     (10,20] 1.000
-## 6  -9.541257 11.704278 DRP000499 DRR001634      2100 rna-seq     6.801619      EAS      (0,10] 1.000</code></pre>
+<pre><code>##          pc1       pc2       pop   sub_pop zero_geno   assay percent_zero
+## 1   3.264836 -3.858396 DRP000366 DRR000897      5665 rna-seq    18.348178
+## 2  -9.549580 -9.418647 DRP000425 DRR001174      3918 rna-seq    12.689879
+## 3  -9.610384 -9.631526 DRP000425 DRR001173      4704 rna-seq    15.235628
+## 4 -11.639558 -9.638593 DRP000425 DRR001176      5952 rna-seq    19.277733
+## 5  -9.561331 -8.392591 DRP000425 DRR001175      4448 rna-seq    14.406478
+## 6  -9.541257 11.704278 DRP000499 DRR001634      2100 rna-seq     6.801619
+##   pred_pop missingness   acc
+## 1      AFR     (10,20] 1.000
+## 2      EUR     (10,20] 1.000
+## 3      EUR     (10,20] 0.846
+## 4      SAS     (10,20] 0.846
+## 5      AMR     (10,20] 1.000
+## 6      EAS      (0,10] 1.000</code></pre>
 <pre class="r"><code>head(allSRAFinal)</code></pre>
-<pre><code>##       SRA.Study Center.Name    BioSample     Organism  LibrarySource           Cell_type   Tissue Cell_line disease ETHNICITY disease_state Diagnosis tissue_type
-## 48582 SRP120018         GEO SAMN07789039 Homo sapiens TRANSCRIPTOMIC             HepLPCs     &lt;NA&gt;      &lt;NA&gt;    &lt;NA&gt;     Asian          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
-## 48583 SRP120018         GEO SAMN07789036 Homo sapiens TRANSCRIPTOMIC Primary hepatocytes     &lt;NA&gt;      &lt;NA&gt;    &lt;NA&gt;     Asian          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
-## 48644 SRP043166         GEO SAMN02852956 Homo sapiens TRANSCRIPTOMIC                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
-## 48645 SRP043166         GEO SAMN02852957 Homo sapiens TRANSCRIPTOMIC                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
-## 48646 SRP043166         GEO SAMN02852961 Homo sapiens TRANSCRIPTOMIC                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
-## 48647 SRP043166         GEO SAMN02852955 Homo sapiens TRANSCRIPTOMIC                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;        &lt;NA&gt;
-##       clinical_information      RACE health_state Population DONOR_HEALTH_STATUS DONOR_ETHNICITY reported_race ReleaseDate         create_date ancestry donor_id Sample_type
-## 48582                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2017-10-30 2017-10-24 11:32:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
-## 48583                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2017-10-30 2017-10-16 12:24:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
-## 48644                 &lt;NA&gt; Caucasian         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
-## 48645                 &lt;NA&gt; Caucasian         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
-## 48646                 &lt;NA&gt; Caucasian         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
-## 48647                 &lt;NA&gt; Caucasian         &lt;NA&gt;       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22 2015-12-09 02:15:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;
-##          source_name source_material_cell_type source_material Organism_part race.ethnicity primary_race SAMPLE_TYPE Sampling_site finalRace finalGeography hispanic
-## 48582 Donor_1 TEM P5                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;           Asia     &lt;NA&gt;
-## 48583   Donor_2 PHCs                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;           Asia     &lt;NA&gt;
-## 48644      Pterygium                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-## 48645      Pterygium                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-## 48646      Pterygium                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-## 48647      Pterygium                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-##             finalSystem finalOrgan finalDisease finalCountry strictestGeography strictestRace strictGeography strictRace
-## 48582           hepatic      liver         &lt;NA&gt;        China               Asia          &lt;NA&gt;            Asia       &lt;NA&gt;
-## 48583           hepatic      liver         &lt;NA&gt;        China               Asia          &lt;NA&gt;            Asia       &lt;NA&gt;
-## 48644 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
-## 48645 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
-## 48646 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
-## 48647 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White</code></pre>
+<pre><code>##       SRA.Study Center.Name    BioSample     Organism  LibrarySource
+## 48582 SRP120018         GEO SAMN07789039 Homo sapiens TRANSCRIPTOMIC
+## 48583 SRP120018         GEO SAMN07789036 Homo sapiens TRANSCRIPTOMIC
+## 48644 SRP043166         GEO SAMN02852956 Homo sapiens TRANSCRIPTOMIC
+## 48645 SRP043166         GEO SAMN02852957 Homo sapiens TRANSCRIPTOMIC
+## 48646 SRP043166         GEO SAMN02852961 Homo sapiens TRANSCRIPTOMIC
+## 48647 SRP043166         GEO SAMN02852955 Homo sapiens TRANSCRIPTOMIC
+##                 Cell_type   Tissue Cell_line disease ETHNICITY disease_state
+## 48582             HepLPCs     &lt;NA&gt;      &lt;NA&gt;    &lt;NA&gt;     Asian          &lt;NA&gt;
+## 48583 Primary hepatocytes     &lt;NA&gt;      &lt;NA&gt;    &lt;NA&gt;     Asian          &lt;NA&gt;
+## 48644                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;
+## 48645                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;
+## 48646                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;
+## 48647                &lt;NA&gt; Pterygia      &lt;NA&gt;    &lt;NA&gt;      &lt;NA&gt;          &lt;NA&gt;
+##       Diagnosis tissue_type clinical_information      RACE health_state
+## 48582      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;
+## 48583      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt;      &lt;NA&gt;         &lt;NA&gt;
+## 48644      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt; Caucasian         &lt;NA&gt;
+## 48645      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt; Caucasian         &lt;NA&gt;
+## 48646      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt; Caucasian         &lt;NA&gt;
+## 48647      &lt;NA&gt;        &lt;NA&gt;                 &lt;NA&gt; Caucasian         &lt;NA&gt;
+##       Population DONOR_HEALTH_STATUS DONOR_ETHNICITY reported_race ReleaseDate
+## 48582       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2017-10-30
+## 48583       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2017-10-30
+## 48644       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22
+## 48645       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22
+## 48646       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22
+## 48647       &lt;NA&gt;                &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;  2015-07-22
+##               create_date ancestry donor_id Sample_type    source_name
+## 48582 2017-10-24 11:32:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt; Donor_1 TEM P5
+## 48583 2017-10-16 12:24:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;   Donor_2 PHCs
+## 48644 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;      Pterygium
+## 48645 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;      Pterygium
+## 48646 2015-12-09 02:16:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;      Pterygium
+## 48647 2015-12-09 02:15:00     &lt;NA&gt;     &lt;NA&gt;        &lt;NA&gt;      Pterygium
+##       source_material_cell_type source_material Organism_part race.ethnicity
+## 48582                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
+## 48583                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
+## 48644                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
+## 48645                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
+## 48646                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
+## 48647                      &lt;NA&gt;            &lt;NA&gt;          &lt;NA&gt;           &lt;NA&gt;
+##       primary_race SAMPLE_TYPE Sampling_site finalRace finalGeography hispanic
+## 48582         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;           Asia     &lt;NA&gt;
+## 48583         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;      &lt;NA&gt;           Asia     &lt;NA&gt;
+## 48644         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
+## 48645         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
+## 48646         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
+## 48647         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
+##             finalSystem finalOrgan finalDisease finalCountry strictestGeography
+## 48582           hepatic      liver         &lt;NA&gt;        China               Asia
+## 48583           hepatic      liver         &lt;NA&gt;        China               Asia
+## 48644 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;
+## 48645 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;
+## 48646 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;
+## 48647 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;
+##       strictestRace strictGeography strictRace
+## 48582          &lt;NA&gt;            Asia       &lt;NA&gt;
+## 48583          &lt;NA&gt;            Asia       &lt;NA&gt;
+## 48644         White            &lt;NA&gt;      White
+## 48645         White            &lt;NA&gt;      White
+## 48646         White            &lt;NA&gt;      White
+## 48647         White            &lt;NA&gt;      White</code></pre>
 <pre class="r"><code># Let&#39;s recode those annoying samples without pop label so we can drop them whenever we need to. 
 fromKasper &lt;- fromKasper %&gt;%
   mutate(pred_pop = na_if(pred_pop, &quot;&quot;)) %&gt;%
@@ -755,14 +797,22 @@ not much)</li>
 <li>Keep Razi et al sepatate.</li>
 </ol>
 <pre class="r"><code>old &lt;- fread(&quot;SRA_metadata/20240613_run_selector_metadata.txt&quot;, na.strings=c(&quot;&quot;,&quot; &quot;,&quot;NA&quot;), sep=&quot;\t&quot;)</code></pre>
-<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata.txt&quot;, na.strings = c(&quot;&quot;, : na.strings[2]==&quot; &quot; consists only of whitespace, ignoring. strip.white==TRUE (default) and
-## &quot;&quot; is present in na.strings, so any number of spaces in string columns will already be read as &lt;NA&gt;.</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata.txt&quot;, na.strings
+## = c(&quot;&quot;, : na.strings[2]==&quot; &quot; consists only of whitespace, ignoring.
+## strip.white==TRUE (default) and &quot;&quot; is present in na.strings, so any number of
+## spaces in string columns will already be read as &lt;NA&gt;.</code></pre>
 <pre class="r"><code>new &lt;- fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, na.strings=c(&quot;&quot;,&quot; &quot;,&quot;NA&quot;))</code></pre>
-<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, : na.strings[2]==&quot; &quot; consists only of whitespace, ignoring. strip.white==TRUE (default) and &quot;&quot; is
-## present in na.strings, so any number of spaces in string columns will already be read as &lt;NA&gt;.</code></pre>
-<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, : Found and resolved improper quoting out-of-sample. First healed line 607994: &lt;&lt;SRP218982 GEO
-## SAMN12614816 Homo sapiens TRANSCRIPTOMIC &quot;classical&quot; (CL) CD14++CD16- monocytes blood NA NA NA NA NA NA NA 2021-11-21T00:00:00Z 2019-08-21T11:32:00Z NA NA NA NA Blood NA NA NA NA
-## NA &gt;&gt;. If the fields are not quoted (e.g. field separator does not appear within any field), try quote=&quot;&quot; to avoid this warning.</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, :
+## na.strings[2]==&quot; &quot; consists only of whitespace, ignoring. strip.white==TRUE
+## (default) and &quot;&quot; is present in na.strings, so any number of spaces in string
+## columns will already be read as &lt;NA&gt;.</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, :
+## Found and resolved improper quoting out-of-sample. First healed line 607994:
+## &lt;&lt;SRP218982 GEO SAMN12614816 Homo sapiens TRANSCRIPTOMIC &quot;classical&quot; (CL)
+## CD14++CD16- monocytes blood NA NA NA NA NA NA NA 2021-11-21T00:00:00Z
+## 2019-08-21T11:32:00Z NA NA NA NA Blood NA NA NA NA NA &gt;&gt;. If the fields are not
+## quoted (e.g. field separator does not appear within any field), try quote=&quot;&quot; to
+## avoid this warning.</code></pre>
 <pre class="r"><code>names(new)[8] &lt;- &quot;Cell_line&quot;
 
 allSRA &lt;- rbind.fill(old, new)
@@ -795,7 +845,9 @@ dim(allSRAFiltKasperLeft)</code></pre>
 ## 1 747964</code></pre>
 <pre class="r"><code>allSRAFiltKasperLeft %&gt;% drop_na(pred_pop) %&gt;% nrow()</code></pre>
 <pre><code>## [1] 226940</code></pre>
-<pre class="r"><code>allSRAFiltKasperRight &lt;- right_join(allSRAFilt, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;)) %&gt;% distinct(BioSample, .keep_all=T)
+<pre class="r"><code>saveRDS(allSRAFiltKasperLeft, file=&quot;20250518_allSRACleanRazi_left_join_all_samples.rds&quot;)
+
+allSRAFiltKasperRight &lt;- right_join(allSRAFilt, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;)) %&gt;% distinct(BioSample, .keep_all=T)
 dim(allSRAFiltKasperRight)</code></pre>
 <pre><code>## [1] 249063     56</code></pre>
 <pre class="r"><code>allSRAFiltKasperRight %&gt;% count(pred_pop) # And these are the pop numbers</code></pre>
@@ -860,7 +912,7 @@ dim(allSRAFiltKasperLeft)  </code></pre>
 <pre class="r"><code>allSRAFiltKasperLeft %&gt;% count(pred_pop) %&gt;% summarise(sum(n)) # And these are the pop numbers</code></pre>
 <pre><code>##   sum(n)
 ## 1 170405</code></pre>
-<pre class="r"><code>saveRDS(allSRAFiltKasperLeft, file=&quot;20250518_allSRACleanRazi_left_join.rds&quot;)</code></pre>
+<pre class="r"><code>saveRDS(allSRAFiltKasperLeft, file=&quot;20250518_allSRACleanRazi_left_join_no_cell_line.rds&quot;)</code></pre>
 <p>Finally, for the paper we will also want to be able to report how
 many of Kasper’s samples we dropped because of cell line issues. Rather
 than have to generate that somewhere else, I do a quick inner join

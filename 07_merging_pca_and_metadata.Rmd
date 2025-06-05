@@ -331,6 +331,8 @@ allSRAFiltKasperLeft %>% count(pred_pop) # And these are the pop numbers
 allSRAFiltKasperLeft %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
 allSRAFiltKasperLeft %>% drop_na(pred_pop) %>% nrow()
 
+saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join_all_samples.rds")
+
 allSRAFiltKasperRight <- right_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T)
 dim(allSRAFiltKasperRight)
 allSRAFiltKasperRight %>% count(pred_pop) # And these are the pop numbers
@@ -357,7 +359,7 @@ dim(allSRAFiltKasperLeft)
 allSRAFiltKasperLeft %>% count(pred_pop) # And these are the pop numbers
 allSRAFiltKasperLeft %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
   
-saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join.rds")
+saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join_no_cell_line.rds")
 ```
 
 Finally, for the paper we will also want to be able to report how many of Kasper's samples we dropped because of cell line issues. Rather than have to generate that somewhere else, I do a quick inner join instead of a left join, and then just tabulate the cell lines:
