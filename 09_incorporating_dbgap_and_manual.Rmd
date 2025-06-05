@@ -5,9 +5,10 @@ tags: "diversity"
 output: html_document
 editor_options: 
   chunk_output_type: console
+date: "`r Sys.Date()`"
 ---
 
-Files from Amanda and Grace are in different formats than the SRA one, so they need to be processed so we can do some joint plotting etc. 
+Files from Amanda and Grace are in different formats than the SRA one, so they need to be processed so we can do some joint plotting etc. Note that the analyses in this file haven't changed since it was last run, but I've updated the file names of the output to reflect the new date of running. 
 
 ```{r setup, include=F}
 knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
@@ -80,7 +81,7 @@ dbgapMelt %>%
 
 dbgapMelt$variable <- factor(dbgapMelt$variable)
 
-saveRDS(dbgapMelt, file="20240731_dbgap_final.rds")
+saveRDS(dbgapMelt, file="20250518_dbgap_final.rds")
 ```
 
 Next up, the manual curation one. Grace confirmed that this is the right file, as it's been filtered down to individual level counts, and there's no need to worry about tissues.  
@@ -149,5 +150,5 @@ litRevSimple %>% filter(!is.na(finalRace)) %>%
   summarise(totalInds = sum(individs)) # Correct, match Grace's excel
 
 # And now we basically have a melted dataframe already! 
-saveRDS(litRevSimple, file="20240916_manual_final.rds")
+saveRDS(litRevSimple, file="20250518_manual_final.rds")
 ```
