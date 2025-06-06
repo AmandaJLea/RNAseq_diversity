@@ -1,7 +1,7 @@
 ---
 title: "Grabbing country for all institutions"
 author: "Irene Gallego Romero"
-date: "2025-05-14"
+date: "`r Sys.Date()`"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -17,48 +17,131 @@ library(reshape)
 library(tidyverse)
 library(stringdist)
 library(purrr)
+library(rentrez)
 
 options(device = "quartz")
 ```
 
-Let's try to use ROR to grab country identifiers for all institutions that we can then include in the map. This beats my manual approach from a while ago by, like, a lot...
+Let's try to use ROR to grab country identifiers for all institutions that we can then include in the map. This beats my manual approach from a while ago by, like, a lot... save that it is noisier with the edge cases, because I can resolve them manually and it will not. 
 
 We're going to use the [ROR](https://ror.org/) data dump for this. I grabbed version v1.65-2025-05-05-ror-data from Zenodo on 14.05.2025.
 
 ```{r read-big-dataset, eval=T}
-old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
-new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
-
-names(new)[8] <- "Cell_line"
-
-allSRA <- rbind.fill(old, new)
-dim(allSRA)
-allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
-dim(allSRA) # Yep that cleaned things up
-
-# Now we drop repeated BioSamples:
-allSRAClean <- allSRA %>% distinct(BioSample, .keep_all=TRUE)
-dim(allSRAClean) # 795071 unique biosamples, now we drop studies with fewer than 10 BioSamples
-
-allSRAcounts <- as.data.frame(table(allSRAClean$SRA.Study))
-keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
-allSRAFilt <- allSRAClean[allSRAClean$SRA.Study %in% keepStudies$Var1,]
-dim(allSRAFilt) # Most of them stick around... 747914 BioSamples 
-
-length(unique(allSRAFilt$SRA.Study))
-length(unique(allSRA$SRA.Study)) # Compared to before... 
-
+allSRAFilt <- readRDS("20250518_allSRACleanRazi_left_join_all_samples.rds")
 # And we also sanity check the institution:
 table(is.na(allSRAFilt$Center.Name))
 
-institutions <- data.frame(name = tolower(unique(allSRAFilt$Center.Name)))
+allSRAFilt %>% filter(Center.Name == "GEO") %>% summarise(distinct_studies = n_distinct(SRA.Study))
+```
+
+Next we need to grab all real submission places for the IDs that match GEO, which is going to be slow - there are 8000 of them - but worthwhile. Bringing the code over from 05, but asking our friend gpt to build a wrapper function around it in the spirit of other GEO queries to save as we go, because 8000 unique studies is a lot of studies. 
+
+```{r grab-real-geo-submitters-1, eval=F}
+length(unique(allSRAFilt$Center.Name))
+
+siteStudy <- allSRAFilt %>% count(Center.Name, SRA.Study)
+geoStudies <- siteStudy[siteStudy$Center.Name %in% "GEO",]$SRA.Study 
+
+process_geo_submitters <- function(studyList, output_prefix = "final_Site_descriptors") {
+  
+    with_retry <- function(expr, max_tries = 3, wait = 1) {
+    for (try in seq_len(max_tries)) {
+      res <- tryCatch({
+        eval(expr)
+      }, error = function(e) {
+        if (try == max_tries) stop(e) else NULL
+      })
+      if (!is.null(res)) return(res)
+      Sys.sleep(wait)
+    }
+    return(NULL)
+  }
+  
+  getBPid <- vector("list", length(studyList))
+  names(getBPid) <- studyList
+  
+for (i in seq_along(studyList)) {
+    tryCatch({
+      sra_id <- with_retry(quote(entrez_search(db = "sra", term = studyList[i])$ids[1]))
+      if (!is.null(sra_id)) {
+        getBPid[[i]] <- with_retry(quote(entrez_link(dbfrom = "sra", id = sra_id, db = "all")$links$sra_bioproject_all))
+      }
+    }, error = function(e) {
+      message(sprintf("Error at index %d for study %s: %s", i, studyList[i], e$message))
+      getBPid[[i]] <- NA
+    })
+    
+    
+    if (i %% 100 == 0) {
+      saveRDS(getBPid, file = sprintf("tmp_%s_getBPid_%03d.rds", output_prefix, i))
+      message(sprintf("Saved getBPid progress at %d / %d", i, length(studyList)))
+    }
+  }
+  
+  getSubmitter <- vector("character", length(getBPid))
+  names(getSubmitter) <- names(getBPid)
+  
+  for (i in seq_along(getBPid)) {
+    tryCatch({
+      getSubmitter[i] <- with_retry(quote(
+        extract_from_esummary(entrez_summary(db = "bioproject", id = getBPid[[i]][[1]][1]), "submitter_organization")
+      ))
+    }, error = function(e) {
+      message(sprintf("Error extracting submitter at index %d: %s", i, e$message))
+      getSubmitter[i] <- NA
+    })
+    
+    if (i %% 100 == 0) {
+      saveRDS(getSubmitter, file = sprintf("tmp_%s_getSubmitter_%03d.rds", output_prefix, i))
+      message(sprintf("Saved getSubmitter progress at %d / %d", i, length(getBPid)))
+    }
+  }
+  
+  getSubmitterdf <- data.frame(
+    SRA = names(getSubmitter),
+    submitter = unname(getSubmitter),
+    stringsAsFactors = FALSE
+  )
+  
+  outfile <- sprintf("%s_submitter_lookup.tsv", output_prefix)
+  write.table(getSubmitterdf, file = outfile, quote = FALSE, row.names = FALSE, sep = "\t")
+  message("Submitter lookup table written to: ", outfile)
+  
+  return(getSubmitterdf)
+}
+
+submitter_info <- process_geo_submitters(geoStudies[1:10], output_prefix = "20250603_final_Site_descriptors")
+```
+
+```{r grab-real-geo-submitters-2}
+submitter_info <- read.table("20250603_final_Site_descriptors_submitter_lookup.tsv", sep="\t", header=T, stringsAsFactors = F, quote = "")
+
+# The final 6 rows are not associated with SRA IDs for some reason, so we drop them:
+submitter_info <- submitter_info[1:(nrow(submitter_info)-6),]
+
+# And now we update
+allSRAFilt$finalSite <- NA
+
+for (i in 1:nrow(submitter_info)){
+  allSRAFilt[allSRAFilt$SRA.Study %in% submitter_info$SRA[i],]$finalSite <- submitter_info$submitter[i]    
+}
+
+allSRAFilt$finalSite <- coalesce(allSRAFilt$finalSite, allSRAFilt$Center.Name)
+
+# Is GEO really gone???
+length(unique(allSRAFilt$Center.Name))
+length(unique(allSRAFilt$finalSite)) # Well that definitely increased, so that's good. 
+
+allSRAFilt %>% count(finalSite, sort=T) %>% head(n = 50)
+allSRAFilt %>% count(Center.Name, sort=T) %>% head(n = 50)
+
+institutions <- data.frame(name = tolower(unique(allSRAFilt$finalSite)))
 dim(institutions)
 ```
 
 Now we start working with the ROR data, which will be new and exciting... 
 
 ```{r read-and-parse-ror}
-
 rorData <- read.csv("ROR_data/v1.65-2025-05-05-ror-data_schema_v2.csv", stringsAsFactors = F)
 
 # Extract useful fields: name, aliases, acronyms, country
@@ -93,7 +176,8 @@ ror_lookup <- ror_lookup %>%
 institutions <- institutions %>%
   mutate(name = gsub("^the ", "", name)) %>% 
   mutate(lastName = map_chr(str_split(name, ","), ~ tail(.x, 1))) %>% 
-  mutate(lastName = gsub("^the ", "", lastName)) 
+  mutate(lastName = gsub("^the ", "", lastName)) %>%
+  mutate(lastName = gsub("^ ", "", lastName))
 
 # Match function using Jaro-Winkler distance (measures edit distance, 0 is identical whereas 1 is totally different, favours matches from the beginning, commonly used in fuzzy text matching)
 find_best_match <- function(inst_name, ror_names) {
@@ -116,40 +200,145 @@ find_best_match <- function(inst_name, ror_names) {
 
 matches <- t(sapply(institutions$name, find_best_match, ror_lookup$name_list))
 
+lastMatches <- t(sapply(institutions$lastName, find_best_match, ror_lookup$name_list))
+
 matchedNames <- institutions %>%
   bind_cols(matches) %>%
   left_join(ror_lookup, by = c("match_name" = "name_list"))
+
+matchedLastNames <- institutions %>%
+  bind_cols(lastMatches) %>%
+  left_join(ror_lookup, by = c("match_name" = "name_list"))
+
+allMatchedNames <- left_join(matchedNames, matchedLastNames, by = c("name" = "name"), suffix = c(
+  "_name", "_lastName"))
+
+allMatchedNames <- allMatchedNames[,c(1,2,3,4,5,7,8,9)]
+nrow(allMatchedNames)
+
+allMatchedNames %>% distinct(name, lastName_name, country_name, country_lastName, .keep_all = T) %>% head(n = 20)
+
+write.table(allMatchedNames, file="20250603_institution_country_matches.tsv", quote=F, row.names=F, sep="\t")
 ```
 
-There are clearly some dubious things going on here, like the fact that GEO gets parsed to GREO, which we do not like and need to correct, but how reliable is this overall?
+Now let's take a look at the output and see if we can make any sense of it... There are a lot of of dumpster fires but many are easy to fix, though how do I justify bothering? How reliable is this overall?
 
-```{r explore-name-merges}
-dim(matchedNames)
+I first defined allMatchedNamesClean as being <= 0.1, but that was still extremely noisy, so I am now sticking with 0.05.
+
+```{r explore-name-matches-1}
+# The internet won't tell me what's a 'good' match so let's just eyeball some different subsets
+allMatchedNames %>% filter(distance_name > 0) %>% arrange(distance_name) %>% head(n = 50)
+allMatchedNames %>% filter(distance_name > 0.05) %>% arrange(distance_name) %>% head(n = 50)
+allMatchedNames %>% filter(distance_name > 0.1) %>% arrange(distance_name) %>% head(n = 50)
+allMatchedNames %>% filter(distance_name > 0.2) %>% arrange(distance_name) %>% head(n = 50)
+allMatchedNames %>% filter(distance_name > 0.3) %>% arrange(distance_name) %>% head(n = 50)
+
+allMatchedNames %>% filter(distance_name == 0) %>% nrow()
+
+allMatchedNamesClean <- allMatchedNames %>% filter(distance_name <= 0.05 | distance_lastName <= 0.05)
+
+allMatchedNamesClean %>% filter(distance_name > 0) %>% arrange(distance_name) %>% head(n = 50)
+allMatchedNamesClean %>% filter(distance_name > 0.05) %>% arrange(distance_name) %>% head(n = 50)
+allMatchedNamesClean %>% filter(distance_name > 0.1) %>% arrange(distance_name) %>% head(n = 50)
+allMatchedNamesClean %>% filter(distance_name > 0.2) %>% arrange(distance_name) %>% head(n = 50)
+allMatchedNamesClean %>% filter(distance_name > 0.3) %>% arrange(distance_name) %>% head(n = 50)
+
+allMatchedNamesClean %>% filter(distance_name == 0) %>% nrow()
+
+allMatchedNamesClean %>% filter(distance_lastName > 0) %>% arrange(distance_lastName) %>% head(n = 50)
+allMatchedNamesClean %>% filter(distance_lastName > 0.05) %>% arrange(distance_lastName) %>% head(n = 50)
+allMatchedNamesClean %>% filter(distance_lastName > 0.1) %>% arrange(distance_lastName) %>% head(n = 50)
+
+allMatchedNamesClean %>% filter(distance_lastName == 0) %>% nrow() # Clearly much better
+allMatchedNames %>% filter(distance_name == 0) %>% nrow()
+
+allMatchedNamesClean$better <- ifelse(allMatchedNamesClean$distance_lastName < allMatchedNamesClean$distance_name, "lastName", "name")
+table(allMatchedNamesClean$better)
+
+allMatchedNamesClean$countryMatch <- allMatchedNamesClean$country_lastName ==  allMatchedNamesClean$country_name
+table(allMatchedNamesClean$countryMatch) # YIKES
+
+write.table(allMatchedNamesClean, file="20250603_institution_country_matches_0.05.tsv", quote=F, row.names=F, sep="\t")
+```
+
+There's some pretty outrageous mistakes that would require manual clean up, and some really perplexing ones, eg university of maryland going to university of malakand (tho if you look at the raw data there isn't a single sensible entry for maryland...). Garvan also failing very hard. I think we have to apply a clear cutoff of some sort and just be like, well, that sucks, but that's the overall issue with the metadata too. 
+
+```{r explore-name-matches-2}
+dim(allMatchedNamesClean)
 dim(institutions)
 
-length(unique(matchedNames$name))
-length(unique(matchedNames$match_name))
+length(unique(allMatchedNamesClean$name))
+length(unique(allMatchedNamesClean$match_name))
 #Uh.... some things are clearly missing here and we don't like that. But what is missing??? Before we delve into that, let's quickly look at some of the matches across confidence bins:
 
-matchedNames$distance <- as.numeric(matchedNames$distance)
-summary(matchedNames$distance)
+allMatchedNamesClean$distance_name <- as.numeric(allMatchedNamesClean$distance_name)
+allMatchedNamesClean$distance_lastName <- as.numeric(allMatchedNamesClean$distance_lastName)
 
-matchedNames %>% arrange(desc(distance)) %>% head(n = 50)
-# These are all dumpster fires but many are easy to fix, though how do I justify bothering? There are many obvious mistakes, though, which would be improved if we did stringsplit and only kept the final one, which seems to be the institutional name...
+summary(allMatchedNamesClean$distance_name)
+summary(allMatchedNamesClean$distance_lastName)
 
-# The internet won't tell me what's a 'good' match so let's just eyeball some different lists. I suspect this is happenings because the distance is contingent on string length?
-matchedNames %>% filter(distance > 0) %>% arrange(distance) %>% head(n = 50)
-matchedNames %>% filter(distance > 0.05) %>% arrange(distance) %>% head(n = 50)
-matchedNames %>% filter(distance > 0.1) %>% arrange(distance) %>% head(n = 50)
-matchedNames %>% filter(distance > 0.2) %>% arrange(distance) %>% head(n = 50)
-matchedNames %>% filter(distance > 0.3) %>% arrange(distance) %>% head(n = 50)
+allMatchedNamesClean %>% arrange(desc(distance_lastName)) %>% filter(better != "name") %>% head(n = 50)
 
-matchedNames %>% filter(distance == 0) %>% nrow()
+length(unique(allMatchedNamesClean$country_name))
+length(unique(allMatchedNamesClean$country_lastName))
+intersect(allMatchedNamesClean$country_name, allMatchedNamesClean$country_lastName)
+
+allMatchedNamesClean %>% count(country_name, sort=T) %>% head(n=20) 
+allMatchedNamesClean %>% count(country_lastName, sort=T) %>% head(n=20)
+
+allMatchedNamesClean %>% count(country_name, sort=T) %>% tail(n=20) 
+allMatchedNamesClean %>% count(country_lastName, sort=T) %>% tail(n=20)
+
+
+# Let's look at some of the more unusual countries: 
+allMatchedNamesClean[allMatchedNamesClean$country_name %in% "Bolivia",] # Correctly parsed as USA by lastName
+
+allMatchedNamesClean[allMatchedNamesClean$country_lastName %in% "Rwanda",] # Correct match on lastName
+
+allMatchedNamesClean[allMatchedNamesClean$country_lastName %in% "Aruba",] # Looks wrong
+allMatchedNamesClean[allMatchedNamesClean$country_lastName %in% "Costa Rica",] # Should probably be Mexico (UNAM)
+allMatchedNamesClean[allMatchedNamesClean$country_lastName %in% "United Arab Emirates",] # All three correct... 
 ```
 
-There's some pretty outrageous mistakes that would require manual clean up, and some really perplexing ones, eg university of maryland going to university of malakand (tho if you look at the raw data there isn't a single sensible entry for maryland...). Garvan also failing very hard. I think wehave to apply a clear cutoff of some sort and just be like, well, that sucks, but that's the overall issue with the metadata too. 
+Listen... we do our best. I think it's as good as it is going to get. So now we just need to merge this back into allSRAFilt and go from there... 
 
-The most I am willing to compromise is to take the ones that fail matching at distance 0 and then strip the commas out and see what happens. 
+There's still the problem of deciding what to do with institutions that are present in multiple countries - do we discard them? I think maybe we discard them, will tell Amanda in this latest update.
 
+```{r merge-back-to-allSRA}
+# And now we update. The filtering means these are in complete disarray, so we need to clean up a bit first... Institutions was parsed a tiny bit, so we create a similar vector in allSRA and attempt to match by that, starting from finalSite, which has dealt with the GEO mess
 
-So in conclusion I could do this, but how annoying would it be? Need to discuss with Amanda
+allSRAFilt <- allSRAFilt %>%
+  mutate(tempInst = gsub("^the ", "", tolower(finalSite))) 
+
+betterLast <- allMatchedNamesClean %>% filter(better == "lastName") %>% distinct(name, .keep_all=T)
+
+betterName <- allMatchedNamesClean %>% filter(better == "name") %>% distinct(name, .keep_all=T)
+
+allSRAFilt$lastCountry <- NA
+allSRAFilt$nameCountry <- NA
+
+for (i in 1:nrow(betterLast)){
+  allSRAFilt[allSRAFilt$tempInst %in% betterLast$name[i],]$lastCountry <- betterLast$country_lastName[i]    
+}
+
+for (i in 1:nrow(betterName)){
+  allSRAFilt[allSRAFilt$tempInst %in% betterName$name[i],]$nameCountry <- betterName$country_name[i]    
+}
+
+table(allSRAFilt$lastCountry)
+table(allSRAFilt$nameCountry)
+
+table(is.na(allSRAFilt$lastCountry), is.na(allSRAFilt$nameCountry)) # How many double assignments...None! What a shock!
+
+allSRAFilt$finalCountry <- coalesce(allSRAFilt$nameCountry, allSRAFilt$lastCountry)
+head(allSRAFilt)
+allSRAFilt %>% count(finalCountry, sort=T) %>% head(n=20) # Venezuela what?
+
+allSRAFilt[allSRAFilt$finalCountry %in% "Venezuela",] %>% head(n = 1000) %>% tail(n=20) #It's all down to UCLA...
+
+head(allSRAFilt[is.na(allSRAFilt$finalCountry),], n = 10000) %>% tail(n = 20)
+
+allSRAFilt <- allSRAFilt %>% select(-lastCountry, -nameCountry, -tempInst)
+
+saveRDS(allSRAFilt, file="20250605_allSRAFilt_Razi_left_country.rds")
+```
