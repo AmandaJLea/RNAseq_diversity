@@ -36,6 +36,8 @@ allSRAFilt %>% filter(Center.Name == "GEO") %>% summarise(distinct_studies = n_d
 
 Next we need to grab all real submission places for the IDs that match GEO, which is going to be slow - there are 8000 of them - but worthwhile. Bringing the code over from 05, but asking our friend gpt to build a wrapper function around it in the spirit of other GEO queries to save as we go, because 8000 unique studies is a lot of studies. 
 
+Currently not run and set to just test the first 10 IDs for sanity checking.
+
 ```{r grab-real-geo-submitters-1, eval=F}
 length(unique(allSRAFilt$Center.Name))
 
