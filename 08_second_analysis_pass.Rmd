@@ -207,7 +207,7 @@ All samples accounted for now, at last!
 
 So let's get a bit more granular, showing n samples per study:
 
-```{r plot-survey-level-2, out.width="100%", echo=F}
+```{r plot-survey-level-2, out.width="100%", echo=T}
 sampleGeography <- allSRAFinal %>% count(SRA.Study, strictestGeography) %>% drop_na(strictestGeography)
 sampleRace <- allSRAFinal %>% count(SRA.Study, strictestRace) %>% drop_na(strictestRace)
 meltSampleGeography <- melt(sampleGeography)
@@ -250,7 +250,7 @@ ggsave("fig2_by_study_boxplot.png", width=7, height=7)
 
 Let's get some meaningful statistics on this:
 
-First we separate studies on the basis of whether they contain racial or geographic descriptors. New filtering has solved the problem of some studies having hispanic samples but otherwise geographic descriptors.
+First we separate studies on the basis of whether they contain racial or geographic descriptors. All instances of both are studies that contain both geographic and Hispanic samples. 
 
 ```{r study-size-statistics}
 geographyClean <- allSRAFinal %>% drop_na(strictestGeography) 
@@ -258,13 +258,19 @@ raceClean <- allSRAFinal %>% drop_na(strictestRace)
 
 geoSRA <- unique(geographyClean$SRA.Study)
 raceSRA <- unique(raceClean$SRA.Study)
-length(intersect(geoSRA, raceSRA)) 
+length(intersect(geoSRA, raceSRA)) # So that's 11... and we don't love that. But last time there were 13 and we didn't do much about them...
 
 allSRAFinal %>% filter(grepl(paste(intersect(geoSRA, raceSRA), collapse="|"), SRA.Study)) %>%
   group_by(SRA.Study) %>%
   summarise(size = n(), studyJoint = n_distinct(SRA.Study)) 
 
 allSRAFinal %>% filter(grepl(paste(intersect(geoSRA, raceSRA), collapse="|"), SRA.Study)) %>% nrow()
+
+# So what do we do with these?
+allSRAFinal %>% filter(grepl(paste(intersect(geoSRA, raceSRA), collapse="|"), SRA.Study)) %>% count(strictestGeography, strictestRace)
+
+# I want to see it by study, though:
+allSRAFinal %>% filter(grepl(paste(intersect(geoSRA, raceSRA), collapse="|"), SRA.Study)) %>% group_by(SRA.Study) %>% count(strictestGeography, strictestRace) %>% as.data.frame()
 
 # Diversity by study:
 geographyClean %>% group_by(SRA.Study) %>% 
@@ -274,6 +280,12 @@ geographyClean %>% group_by(SRA.Study) %>%
 raceClean %>% group_by(SRA.Study) %>% 
   summarise(size = n(), studyRace = n_distinct(strictestRace)) %>%
   summarise(n = size, meanSize = mean(size), meanRace = mean(studyRace), maxSize = max(size), maxRace = max(studyRace), sdSize = sd(size), sdRace = sd(studyRace))
+
+# And now the numbers by country:
+####### NOTE YOU ARE HERE!!!!
+allSRAFinal %>% drop_na(finalCountry, strictestRace) %>% count(finalCountry, strictestRace)
+
+allSRAFinal %>% drop_na(finalCountry, strictestRace) %>% count(finalCountry, strictestRace)
 
 # By descriptor across all studies
 geographyClean %>% group_by(SRA.Study) %>% count(strictestGeography) %>% group_by(strictestGeography) %>% 
@@ -416,10 +428,6 @@ allStudySizes <- allSRAFinal %>% group_by(SRA.Study) %>%
 
 lm(sampleSize ~ region, data = allStudySizes)
 anova(lm(sampleSize ~ region, data = allStudySizes))
-
-
-# Note that there's an issue here - although we filtered for studies with more than 10 entries, not all of those will have 10 samples with descriptors, which explains why these numbers are smaller. So long as we are consistent across the two datasets, it should be ok. 
-
 ```
 
 Maybe worth considering some alluvial plots? At the single country level they're very messy, however, so what about at the World Bank region level?
@@ -518,10 +526,9 @@ descriptorChi <- full_join((allSRAFinal %>% filter(!grepl('USA', finalCountry)) 
   count(hasDescriptor) %>% 
   mutate(freq = n/sum(n))), by = "hasDescriptor", suffix = c("noUSA", "USA"))
 
+# Test the numbers:
 chisq.test(descriptorChi[,c(2,4)])
-
-allSRAFinal %>% count(hasDescriptor) %>% 
-  mutate(freq = n/sum(n))
+fisher.test(descriptorChi[,c(2,4)]) # Odds ratio interpretation varies depending on order, but otherwise all good.
 
 # We also want to know the mean sample size of studies in the USA vs those not in the USA, for funsies
 usaSizes <- allSRAFinal %>% filter(grepl('USA', finalCountry)) %>%
