@@ -6,7 +6,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-We will finally analyse this data properly, and bring all datasets together...  
+We will finally analyse this data properly, and bring all datasets together... But there's been changes to figures! So we gotta get creative.   
 
 ```{r setup, include=F}
 knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
@@ -33,8 +33,8 @@ options(device = "quartz")
 
 allSRAFinal <- readRDS("20250518_allSRAFinal_for_plotting.rds") # Samples with descriptors
 allSRAClean <- readRDS("20250605_allSRAFilt_Razi_left_country.rds") # All samples with inferred country info
-dbGapFinal <- readRDS("20240731_dbgap_final.rds")
-litRevFinal <- readRDS("20240916_manual_final.rds")
+dbGapFinal <- readRDS("20240731_dbgap_final.rds") #dbGap, all from USA
+litRevFinal <- readRDS("20240916_manual_final.rds") # manual curation
 ```
 
 ## We need to clean up a bit for the new files, and define color scales:
@@ -64,29 +64,28 @@ scale_fill_dbGap <- function(...){
 
 ### Razi et al colours:
 
-```{r razi-et-al-colors}
+These are basically ours, but smaller - we gotta reorder his factor levels so they match well. Both final and clean have been merged with his, so we gotta create factor levels for both.
 
-# And now the fill scales for Kasper, which are basically ours, but smaller - we gotta reorder his factor levels so they match well:
-allRaziFinal$pred_pop <- factor(allRaziFinal$pred_pop, levels = c("AFR", "EUR", "SAS", "EAS", "AMR", "")) 
+```{r razi-et-al-colors}
+allSRAFinal$pred_pop <- factor(allSRAFinal$pred_pop, levels = c("AFR", "EUR", "SAS", "EAS", "AMR", "")) 
+allSRAClean$pred_pop <- factor(allSRAClean$pred_pop, levels = c("AFR", "EUR", "SAS", "EAS", "AMR", "")) 
 
 # NA is grey50
 scale_fill_kasper <- function(...){
     ggplot2:::manual_scale('fill',  
-        values = setNames(c('#9C8DC3', '#DB6968', '#60BC55', '#4D97CD', '#F8984E', 'grey50'), levels(allRaziFinal$pred_pop)), 
+        values = setNames(c('#9C8DC3', '#DB6968', '#60BC55', '#4D97CD', '#F8984E', 'grey50'), levels(allSRAFinal$pred_pop)), 
     )
 }
 
 scale_color_kasper <- function(...){
     ggplot2:::manual_scale('color',  
-        values = setNames(c('#9C8DC3', '#DB6968', '#60BC55', '#4D97CD', '#F8984E', 'grey50'), levels(allRaziFinal$pred_pop)), 
+        values = setNames(c('#9C8DC3', '#DB6968', '#60BC55', '#4D97CD', '#F8984E', 'grey50'), levels(allSRAFinal$pred_pop)), 
     )
 }
 ```
 
 ### SRA and manual colours:
-
 ```{r plotting-prep-1}
-
 # First let's fix Sub-Saharan and set the unknowns to NA so we don't break the plots.
 litRevFinal <- litRevFinal %>% 
   mutate(finalGeo = gsub("Subsaharan Africa", "Sub-Saharan Africa", finalGeo)) %>%
@@ -120,7 +119,6 @@ scale_fill_race <- function(...){
         values = setNames(raceColours, levels(allSRAFinal$strictestRace)), 
     )
 }
-
 
 # And finally, the world Bank Economic region palette, for later:
 wberCols <- c(viridis::turbo(n = 7))
@@ -182,7 +180,7 @@ theme_update(legend.key.size = unit(12, 'pt'), #change legend key size
 theme_update(plot.margin = unit(c(2, 2, 2, 2), "pt"))
 ```
 
-We're also going to use some additional info from the World Bank, so let's add those columns in now, to all datasets (they're already in SRA, so only need to add them to dbgap, which is easy—all USA—and to the recount manual files):
+We're also going to use some additional info from the World Bank, so let's add those columns in now, to all datasets (they're already in allSRAFinal, so only need to add them to allSRAClean, dbgap, which is easy—all USA—and to the recount manual files):
 
 Worth keeping in mind that China here includes Hong Kong SAR, which is world bank high income while the rest of China is upper middle.
 
@@ -225,6 +223,38 @@ litRevFinal <- litRevFinal %>%
 # And now we need to clean up some labels so we can plot them better. Good thing is, it's just an ampersand:
 litRevFinal$worldRegionLA <- gsub("& ", "&\n", litRevFinal$worldRegionLA)
 litRevFinal$worldRegionSample <- gsub("& ", "&\n", litRevFinal$worldRegionSample)
+
+# And now the fun one... allSRAClean:
+# Some names need to be fixed, but others are more flexible? I'd rather have USA than United States.
+allSRAClean$finalCountry <- gsub("^UK$", "United Kingdom", allSRAClean$finalCountry) 
+allSRAClean$finalCountry <- gsub("^Korea$", "South Korea", allSRAClean$finalCountry)
+
+allSRAClean$worldBank <- worldBank[match(allSRAClean$finalCountry, worldBank$Economy),]$Income.group
+# allSRAClean %>% count(finalCountry, worldBank)
+
+# Missing countries are all high income, so we can set them to that manually now that we're happy with the names:
+allSRAClean <- allSRAClean %>% 
+  mutate(worldBank = if_else(is.na(worldBank), "High income", worldBank)) %>%
+  mutate(worldBank = if_else(is.na(finalCountry), NA, worldBank ))
+
+# And now the regions they define:
+allSRAClean$worldRegion <- worldBank[match(allSRAClean$finalCountry, worldBank$Economy),]$Region
+# allSRAClean %>% count(finalCountry, worldRegion)
+
+# Once again we gotta add some manually...
+allSRAClean <- allSRAClean %>% 
+  mutate(worldRegion = if_else(grepl("Russia|Slovakia", finalCountry), "Europe & Central Asia", worldRegion)) %>%
+  mutate(worldRegion = if_else(grepl("South Korea|Taiwan", finalCountry), "East Asia & Pacific", worldRegion)) %>%
+  mutate(worldRegion = if_else(grepl("USA", finalCountry), "North America", worldRegion)) %>%
+  as.data.frame()
+
+# And now we need to clean up some labels so we can plot them better. Good thing is, it's just an ampersand:
+allSRAClean$worldRegion <- gsub("& ", "&\n", allSRAClean$worldRegion)
+```
+
+
+
+
 ```
 
 ## 1. Where is the sequencing happening, and what countries are being included?  
