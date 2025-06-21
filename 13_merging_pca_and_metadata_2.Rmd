@@ -1,9 +1,9 @@
 ---
-title: "Merging the PCA with our calls, part 2"
+title: "Merging the PCA with our calls, part 2 - quick exploration of data."
 layout: "post"
 tags: "diversity"
 output: html_document
-date: "2025-05-07"
+date: "`r Sys.Date()`"
 editor_options: 
   chunk_output_type: console
 ---
@@ -35,24 +35,10 @@ Now that we have finished doing the programmatic grabbing from NCBI, let's do th
 2. agreement between him and us, as either alluvial or confusion matrix - this can also lead to point 3 below.
 3. sample swaps in Run IDs, but that's really just for my own personal edification - doesn't fit with the paper.
 
-So let's start with 1, even though it's annoying. These are big files, so let's load them in as quickly as we need to and then throw them out... at least we know what columns we want to keep, this time around. We remove studies with fewer than 10 biosamples, and studies that are not transcriptomic in source, and then we merge with Kasper (gotta understand his exclusion criteria better)
+So let's start with 1, even though it's annoying. These are big files, so let's load them in as quickly as we need to and then throw them out... at least we know what columns we want to keep, this time around. We load in the rds with the country info from the previous script, and then we merge with Kasper, although we should not discard samples just because they have no info from him - we stick to all studies that passed our criteria, after we wipe the cell line column.
 
 ```{r read-in-original-data}
-old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
-new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
-
-names(new)[8] <- "Cell_line"
-
-allSRA <- rbind.fill(old, new)
-dim(allSRA)
-allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
-# allSRA <- unique(allSRA) # This is from Amanda, I do distinct below instead.
-dim(allSRA) # Yep that cleaned things up
-
-allSRAcounts <- as.data.frame(table(allSRA$SRA.Study))
-keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
-allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$Var1,]
-dim(allSRAFilt) # Most of them stick around... 
+allSRAFilt <- readRDS("20250605_allSRAFilt_country.rds")
 
 # So now we finally clean up to one row per biosample...
 allSRAClean <- allSRAFilt %>% distinct(BioSample, .keep_all=TRUE)
@@ -474,7 +460,7 @@ geoPCAAlluvialSlim + confMatrixPlot +
   ggsave("sra_kasper_slim_alluvial_conf_matrix.png", height=3, width=6)
 ```
 
-I think that's all we need, really... no point in digging much deeper when it is all going to be mighty confusing anyhow. And since the actual plotting and integration happens in the next scripts, let's write out our merged outputs
+I think that's all we need, really... no point in digging much deeper when it is all going to be mighty confusing anyhow. And since the actual plotting and integration happens in the next scripts, let's write out our merged outputs.
 
 ```{r write-output}
 saveRDS(allSRAClean, file="20250508_allSRA_data_razi_merge.rds")
