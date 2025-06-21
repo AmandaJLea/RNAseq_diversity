@@ -331,6 +331,14 @@ allSRAFiltKasperLeft %>% count(pred_pop) # And these are the pop numbers
 allSRAFiltKasperLeft %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
 allSRAFiltKasperLeft %>% drop_na(pred_pop) %>% nrow()
 
+# And some basic statistics about this:
+allSRAFiltKasperLeft %>% drop_na(assay) %>% 
+  summarise(studies = n_distinct(SRA.Study), samples = n_distinct(BioSample), studies2 = n_distinct(BioProject))
+
+# And the missingness, for tabulating how many samples have descriptors...
+allSRAFiltKasperLeft %>% drop_na(assay) %>% filter(assay == "rna-seq") %>% count(missingness)
+allSRAFiltKasperLeft %>% drop_na(assay) %>% filter(assay == "scrna-seq") %>% count(missingness)
+
 saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join_all_samples.rds")
 
 allSRAFiltKasperRight <- right_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T)
