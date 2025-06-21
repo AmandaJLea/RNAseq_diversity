@@ -6,6 +6,7 @@ output:
 title: "Final figure 5"
 editor_options:
   chunk_output_type: console
+date: "`r Sys.Date()`"
 ---
 
 Whyyyyyy does it work when I run it on mine but not on hers. 
@@ -15,7 +16,6 @@ Whyyyyyy does it work when I run it on mine but not on hers.
 knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
 # But we also have to do this manually because R studio is stupid: 
 setwd(knitr::opts_knit$get("root.dir"))
-library(tidyverse)
 library(RColorBrewer)
 library(data.table)
 library(ggpmisc)
@@ -24,6 +24,7 @@ library(patchwork)
 library(thematic)
 library(scales)
 library(dplyr)
+library(tidyverse)
 
 concatenate_non_na <- function(row) {
   non_na_values <- na.omit(row)
@@ -55,13 +56,13 @@ names(new)[8] <- "Cell_line"
 allSRA <- rbind.fill(old, new)
 allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
 
-allSRAcounts <- as.data.frame(table(allSRA$SRA.Study))
-keepStudies <- allSRAcounts[allSRAcounts$Freq >= 10,]
-allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$Var1,]
+allSRACounts <- allSRA %>% group_by(SRA.Study) %>% summarise(bioSamples = n_distinct(BioSample))
+keepStudies <- allSRACounts[allSRACounts$bioSamples >= 10,] 
+allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$SRA.Study,]
+allSRAFilt <- allSRAFilt %>% distinct(BioSample, .keep_all = TRUE)
+dim(allSRAFilt) 
 
-allSRAClean <- allSRAFilt %>% distinct(BioSample, .keep_all=TRUE)
-
-data_sub3<-allSRAClean
+data_sub3<-allSRAFilt
 data_sub3$ReleaseDate2<-as.POSIXct(data_sub3$ReleaseDate)
 data_sub3$ReleaseYear<-format(data_sub3$ReleaseDate2, "%Y")
 
@@ -75,7 +76,7 @@ dbGap2 <- subset(dbGap,total_samples>9) # I don't remove these on purpose, but a
 
 Read in cleaned up/recoded SRA data from Irene. Recoding follows: https://gitlab.svi.edu.au/igr-lab/rna-diversity/-/blob/main/07_second_analysis_pass.Rmd?ref_type=heads
 ```{r}
-allSRAFinal<-readRDS('20240901_allSRAFinal_for_plotting.rds')
+allSRAFinal<-readRDS('20250518_allSRAFinal_for_plotting.rds')
 
 allSRAFinal$strictestGeography <- factor(allSRAFinal$strictestGeography, levels = c("Sub-Saharan Africa", "North Africa and\nWestern Asia", "Europe", "South Asia", "Southeast Asia", "East Asia", "Asia (NOS)", "Oceania", "Americas", "Multiple", "Other"))
 
