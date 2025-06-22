@@ -143,7 +143,7 @@ dim(institutions)
 
 Now we start working with the ROR data, which will be new and exciting... 
 
-```{r read-and-parse-ror}
+```{r read-and-parse-ror, eval=F}
 rorData <- read.csv("ROR_data/v1.65-2025-05-05-ror-data_schema_v2.csv", stringsAsFactors = F)
 
 # Extract useful fields: name, aliases, acronyms, country
@@ -227,7 +227,9 @@ Now let's take a look at the output and see if we can make any sense of it... Th
 
 I first defined allMatchedNamesClean as being <= 0.1, but that was still extremely noisy, so I am now sticking with 0.05.
 
-```{r explore-name-matches-1}
+```{r explore-name-matches-1, eval=T}
+allMatchedNames <- read.table("20250603_institution_country_matches.tsv", header=T, quote="", sep="\t")
+
 # The internet won't tell me what's a 'good' match so let's just eyeball some different subsets
 allMatchedNames %>% filter(distance_name > 0) %>% arrange(distance_name) %>% head(n = 50)
 allMatchedNames %>% filter(distance_name > 0.05) %>% arrange(distance_name) %>% head(n = 50)
@@ -291,20 +293,17 @@ allMatchedNamesClean %>% count(country_lastName, sort=T) %>% head(n=20)
 allMatchedNamesClean %>% count(country_name, sort=T) %>% tail(n=20) 
 allMatchedNamesClean %>% count(country_lastName, sort=T) %>% tail(n=20)
 
-
 # Let's look at some of the more unusual countries: 
 allMatchedNamesClean[allMatchedNamesClean$country_name %in% "Bolivia",] # Correctly parsed as USA by lastName
-
 allMatchedNamesClean[allMatchedNamesClean$country_lastName %in% "Rwanda",] # Correct match on lastName
-
 allMatchedNamesClean[allMatchedNamesClean$country_lastName %in% "Aruba",] # Looks wrong
 allMatchedNamesClean[allMatchedNamesClean$country_lastName %in% "Costa Rica",] # Should probably be Mexico (UNAM)
 allMatchedNamesClean[allMatchedNamesClean$country_lastName %in% "United Arab Emirates",] # All three correct... 
 ```
 
-Listen... we do our best. I think it's as good as it is going to get. So now we just need to merge this back into allSRAFilt and go from there... 
+Listen... we do our best. I think it's as good as it is going to get unless we wanted to manually tweak too many things. So now we just need to merge this back into allSRAFilt and go from there... 
 
-There's still the problem of deciding what to do with institutions that are present in multiple countries - do we discard them? I think maybe we discard them, will tell Amanda in this latest update.
+There's still the problem of deciding what to do with institutions that are present in multiple countries - which I think we discard, even if it seems like madness because we have strong priors!
 
 ```{r merge-back-to-allSRA}
 # And now we update. The filtering means these are in complete disarray, so we need to clean up a bit first... Institutions was parsed a tiny bit, so we create a similar vector in allSRA and attempt to match by that, starting from finalSite, which has dealt with the GEO mess
@@ -312,9 +311,22 @@ There's still the problem of deciding what to do with institutions that are pres
 allSRAFilt <- allSRAFilt %>%
   mutate(tempInst = gsub("^the ", "", tolower(finalSite))) 
 
-betterLast <- allMatchedNamesClean %>% filter(better == "lastName") %>% distinct(name, .keep_all=T)
+betterLast <- allMatchedNamesClean %>% filter(better == "lastName")
+betterName <- allMatchedNamesClean %>% filter(better == "name")
 
-betterName <- allMatchedNamesClean %>% filter(better == "name") %>% distinct(name, .keep_all=T)
+betterLast %>% group_by(match_name_lastName) %>% summarise(countries = n_distinct(country_lastName)) %>% summarise(mean(countries), max(countries)) 
+betterName %>% group_by(match_name_name) %>% summarise(countries = n_distinct(country_name))%>% summarise(mean(countries), max(countries)) 
+
+# Stats for sanity checking:
+singleLast <- betterLast %>% group_by(match_name_lastName) %>% summarise(countries = n_distinct(country_lastName)) %>% filter(countries == 1)
+singleName <- betterName %>% group_by(match_name_name) %>% summarise(countries = n_distinct(country_name)) %>% filter(countries == 1)
+
+betterLast <- betterLast[betterLast$match_name_lastName %in% singleLast$match_name_lastName,]
+betterName <- betterName[betterName$match_name_name %in% singleName$match_name_name,]
+
+#Stats part 2
+betterLast %>% group_by(match_name_lastName) %>% summarise(countries = n_distinct(country_lastName)) %>% summarise(mean(countries), max(countries)) 
+betterName %>% group_by(match_name_name) %>% summarise(countries = n_distinct(country_name))%>% summarise(mean(countries), max(countries)) 
 
 allSRAFilt$lastCountry <- NA
 allSRAFilt$nameCountry <- NA
@@ -342,5 +354,7 @@ head(allSRAFilt[is.na(allSRAFilt$finalCountry),], n = 10000) %>% tail(n = 20)
 
 allSRAFilt <- allSRAFilt %>% select(-lastCountry, -nameCountry, -tempInst)
 
-saveRDS(allSRAFilt, file="20250605_allSRAFilt_Razi_left_country.rds")
+saveRDS(allSRAFilt, file="20250621_allSRAFilt_Razi_left_country.rds")
 ```
+
+
