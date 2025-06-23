@@ -8,7 +8,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-We will finally analyse this data properly. This script makes plots for figures 3 and 4, and most of the statistical analyses that underpin them, as well as most of the numbers describing the SRA data in the text.
+We will finally analyse this data properly. This script makes plots for figures 3 and 4 (possibly now only a single figure), and most of the statistical analyses that underpin them, as well as most of the numbers describing the SRA data in the text.
 
 ```{r setup, include=F}
 knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
@@ -109,6 +109,17 @@ wide2Design <- "
   11
   22
 "
+
+twox2DesignRowWise <- "
+  12
+  34
+"
+
+twox2DesignColWise <- "
+  13
+  24
+"
+
 
 theme_set(theme_bw(base_size = 6))
 theme_update(axis.text=element_text(size=7))
@@ -544,6 +555,63 @@ mean(nousaSizes$n)
 t.test(usaSizes$n, nousaSizes$n)
 ```
 
+And now the overrepresentation stats using the population data too:
+
+```{r overrepresentation-in-submission-sra-final}
+sraCountry <- allSRAFinal %>% drop_na(finalCountry) %>% 
+  count(finalCountry, worldRegion, worldBank) %>% 
+  melt() %>% 
+  arrange(worldRegion) %>% 
+  mutate(db = "SRA") %>% 
+  mutate(finalCountry = ifelse(grepl("USA", finalCountry), "United States", finalCountry))
+
+worldPop <- read.csv("RNA-seq-diversity_world-population.csv")
+worldPop$name <- gsub("Korea, South", "South Korea", worldPop$name)
+
+sraCountry2 <- sraCountry %>% 
+  group_by(finalCountry, db, worldRegion) %>% 
+  summarise(value = sum(value)) %>%
+  as.data.frame()
+
+sraCountry3 <- left_join(sraCountry2, worldPop, join_by( "finalCountry" == "name"))
+
+# And now we get some fancy new columns for plotting
+sraCountry3 <- sraCountry3 %>% 
+  mutate(fractPop = value.y/sum(worldPop$value)) %>%
+  group_by(db) %>%
+  mutate(fractDB = value.x/sum(value.x)) %>%
+  mutate(excess = fractDB/fractPop) %>%
+  as.data.frame()
+
+# How many samples have a country
+allSRAFinal %>% count(is.na(finalCountry))
+
+# How many institutions?
+allSRAFinal %>% drop_na(finalCountry) %>% summarise(studies = n_distinct(SRA.Study), countries = n_distinct(finalCountry))
+
+# Overrepresentation of submitting country relative to global population:
+sraCountry3
+
+# We wanna test the USA, so:
+usaSamples <- allSRAFinal %>% filter(finalCountry == "United States") %>% nrow()
+allSamples <- allSRAFinal %>% drop_na(finalCountry) %>% nrow()
+usaProp <- sraCountry3[sraCountry3$finalCountry %in% "United States", ]$fractPop[1]
+
+# And finally, a binomial test for the USA
+binom.test(usaSamples, allSamples, usaProp)
+
+# And another one for institutions in LATAM + Caribbean
+latamSamples <- sraCountry3 %>% filter(worldRegion == "Latin America &\nCaribbean") %>% 
+  summarise(samples = sum(value.x)) %>%
+  mutate(proportion = samples/allSamples)
+
+# But to do the test we need to know how many people live in LATAM... 
+latamProp <- worldPop %>% filter(region %in% c("Central America and the Caribbean", "South America")) %>% summarise(sum(value))/sum(worldPop$value)
+            
+binom.test(latamSamples$samples, allSamples, latamProp[1,1])
+```
+
+
 ## 3. What tissues are they sequencing?
 
 As above, we start by looking simply at the country/region where sequencing is happening. A quick straw poll suggested finalOrgan was more interpretable than finalSystem, so I'm sticking with organ. Will have to work out how to do plots of disease and tissue with all the missing values, but I think we're getting closer
@@ -851,6 +919,27 @@ ggsave("fig4_disease_by_race_faceted.png", width=6, height=9)
 
 ```
 
+### A new figure 4 that combines figures 3 and 4
+
+Here we are simply playing with plots, no new analyses being done at all, but we remove legends from the previous figure 4 panels, because they're not needed. Miraculously it all fits, otherwise
+
+```{r combine-tissue-disease}
+geoDiseaseSlim2 <- geoDiseaseSlim +
+    theme(legend.position="none")
+
+raceDiseaseSlim2 <- raceDiseaseSlim +
+    theme(legend.position="none")
+
+geoOrganSlim + raceOrganSlim + geoDiseaseSlim2 + raceDiseaseSlim2 +
+  plot_layout(design=twox2DesignRowWise) +
+  plot_annotation(tag_levels = 'A') 
+
+ggsave("fig4_tissue_disease_combined_plots.pdf", width=6, height=6)
+ggsave("fig4_tissue_disease_combined_plots.png", width=6, height=6)
+
+```
+
+
 ## 4. Attempting to look at some of the relationships between classes:
 
 What we really want to get to is the relationship between tissue and disease, because we think it might be interesting.
@@ -991,3 +1080,5 @@ And then we write the file out, for the joint plotting adventures...
 ```{r allSRAOut}
 saveRDS(allSRAFinal, file="20250518_allSRAFinal_for_plotting.rds")
 ```
+
+
