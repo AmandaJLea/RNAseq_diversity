@@ -276,12 +276,20 @@ sraCountry <- allSRAClean %>% drop_na(finalCountry) %>% count(finalCountry, worl
 
 dbGapCountry <- dbGapFinal %>% drop_na(finalCountry) %>% group_by(finalCountry, worldRegion, worldBank) %>% summarise(value = sum(value)) %>% mutate(db = "dbGaP") %>% as.data.frame()
 
-allCountry <- rbind.fill(sraCountry, dbGapCountry)
-allCountry <- allCountry %>%
+# This one is needed for the supplement, but not for the main figure, so we gotta split allCountry into 2
+litRevCountry <- litRevFinal %>% drop_na(lacountry) %>% group_by(lacountry, worldRegionLA, worldBankLA, samcountry, worldRegionSample, worldBankSample, hasDescriptor) %>% summarise(value = sum(individs)) %>% mutate(db = "Manual") %>% as.data.frame()
+names(litRevCountry)[1:3] <- c("finalCountry", "worldRegion", "worldBank")
+
+# But this is all very annoying because it makes the plots by country and we get a lot of weird artefacts in our plots. So let's do a bit more merging of data before we plot
+
+allCountryMain <- rbind.fill(sraCountry, dbGapCountry, litRevCountry)
+allCountryMain <- allCountryMain %>%
   mutate(worldBank = gsub("middle ", "middle\n", worldBank)) %>% 
-  # mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) %>%
-  # mutate(hasDescriptor = if_else(grepl("dbGaP", db), "GrafPop", hasDescriptor)) %>%
+  mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) %>%
+  mutate(hasDescriptor = if_else(grepl("dbGaP", db), "GrafPop", hasDescriptor)) %>%
   mutate(finalCountry = if_else(grepl("USA", finalCountry), "United States", finalCountry))
+
+allCountry <- allCountryMain %>% filter(db %in% c("dbGaP", "SRA"))
 
 dbByRegion <- allCountry %>% group_by(worldRegion, db) %>% summarise(value = sum(value), db = db) %>% distinct() %>% as.data.frame %>% 
   ggplot(., aes(x = db, y=value, fill=worldRegion)) +
@@ -316,13 +324,13 @@ ggsave("all_dbs_sample_properties_map_pre.pdf", width = 3, height = 7)
 ggsave("all_dbs_sample_properties_map_pre.png", width = 3, height = 7)
 ```
 
-How overrepresented are these numbers? We begin by grabbing the UN population data and doing some more mergers:
+How overrepresented are these numbers? We begin by grabbing the UN population data and doing some more mergers - important to note that we add back the manual review data here because otherwise it would need a figure of its own:
 
 ```{r overrepresentation}
 worldPop <- read.csv("RNA-seq-diversity_world-population.csv")
 worldPop$name <- gsub("Korea, South", "South Korea", worldPop$name)
 
-allCountry2 <- allCountry %>% 
+allCountry2 <- allCountryMain %>% 
   group_by(finalCountry, db, worldRegion) %>% 
   summarise(value = sum(value)) %>%
   as.data.frame()
@@ -347,12 +355,35 @@ ggplot(allCountry3, aes(x = excess, y=finalCountry, color=db)) +
   geom_vline(xintercept = 1) +
   annotation_logticks(sides="b") +
   xlab("Overrepresentation in database\nrelative to global population") +
-  ylab("Depositing/Last author country") +
+  ylab("Depositing institution country") +
   theme_bw(base_size = 8) +
   theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.position="bottom")
 
 ggsave("db_overrepresentation.pdf", width = 3, height = 8)
 ggsave("db_overrepresentation.png", width = 3, height = 8)
+
+# We remake the plot 
+studybyRegion <- allSRAClean %>% count(SRA.Study, worldRegion) %>% drop_na(worldRegion) %>% 
+  ggplot(., aes(x = worldRegion, y=n,fill=worldRegion)) +
+    geom_boxplot(width=0.8, outlier.shape = NA) +
+    geom_jitter(size=0.8, width=0.2, color="#333333", alpha = 0.3) +
+    ggtitle("Sample depositor location\n(WB Economic Region)") +
+    xlab("") +
+    ylab("Samples per study") +
+    coord_flip() +
+    scale_y_continuous(trans='log10') +
+    scale_fill_wber() +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    theme(legend.position = "none")
+
+studybyRegion
+ggsave("allSRAClean_by_study_by_region.pdf", height=5, width=5)
+ggsave("allSRAClean_by_study_by_region.png", height=5, width=5) 
+
+# But why are there studies under 10 samples???? Is it just because we can't identify country?
+allSRAClean %>% group_by(SRA.Study) %>% summarise(biosample = n_distinct(BioSample)) %>% summarise(min(biosample))
+allSRAClean %>% drop_na(finalCountry) %>%group_by(SRA.Study) %>% summarise(biosample = n_distinct(BioSample)) %>% summarise(min(biosample)) # Indeed.
+
 
 ```
 
@@ -420,6 +451,13 @@ latamSamples <- allCountry3 %>% filter(worldRegion == "Latin America &\nCaribbea
 latamProp <- worldPop %>% filter(region %in% c("Central America and the Caribbean", "South America")) %>% summarise(sum(value))/sum(worldPop$value)
             
 binom.test(latamSamples$samples, allSamples, latamProp[1,1])
+
+#And some stats on the Razi et al subset:
+allSRAClean %>% drop_na(pred_pop) %>% filter(missingness %in% c("(0,10]", "(10,20]", "(20,30]")) %>% count(pred_pop) %>% mutate(freq = n/sum(n))
+
+allSRAClean %>% drop_na(pred_pop) %>% filter(missingness %in% c("(0,10]", "(10,20]", "(20,30]")) %>% summarise(studies = n_distinct(SRA.Study), samples = n_distinct(BioSample))
+
+allSRAClean %>% drop_na(pred_pop) %>% summarise(studies = n_distinct(SRA.Study), samples = n_distinct(BioSample))
 ```
 
 
