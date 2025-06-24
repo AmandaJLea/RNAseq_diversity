@@ -686,20 +686,23 @@ ggsave("fig3_organ_by_descriptor_slim.png", width = 7, height = 4.5)
 # Some statistics: The percentage of samples that each tissue accounts for, and how many descriptors are associated:
 allSRAFinal %>% count(hasDescriptor, finalOrgan) %>% group_by(hasDescriptor) %>% summarise(finalOrgan = finalOrgan, n = n, proportion = n/sum(n)) %>% as.data.frame
 
-allSRAFinal %>% count(finalOrgan, strictestGeography) %>% drop_na(strictestGeography) %>% group_by(finalOrgan) %>% summarise(geoGroups = length(finalOrgan)) %>% arrange(desc(geoGroups)) %>% as.data.frame
+allSRAFinal %>% count(finalOrgan, strictestGeography) %>% drop_na(strictestGeography, finalOrgan) %>% group_by(finalOrgan) %>% summarise(geoGroups = length(finalOrgan)) %>% arrange(desc(geoGroups)) %>% as.data.frame
   
-allSRAFinal %>% count(finalOrgan, strictestRace) %>% drop_na(strictestRace) %>% group_by(finalOrgan) %>% summarise(raceGroups = length(finalOrgan)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+allSRAFinal %>% count(finalOrgan, strictestRace) %>% drop_na(strictestRace, finalOrgan) %>% group_by(finalOrgan) %>% summarise(raceGroups = length(finalOrgan)) %>% arrange(desc(raceGroups)) %>% as.data.frame
 
 # And how many tissues is each descriptor associated with?
 allSRAFinal %>% drop_na(strictestGeography, finalOrgan) %>% count(finalOrgan) 
 allSRAFinal %>% drop_na(strictestRace, finalOrgan) %>% count(finalOrgan) 
 
-23/28
-36/37
-
-allSRAFinal %>% count(finalOrgan, strictestGeography) %>% drop_na(strictestGeography) %>% group_by(strictestGeography) %>% summarise(geoGroups = length(strictestGeography)) %>% arrange(desc(geoGroups)) %>% as.data.frame
+allSRAFinal %>% count(finalOrgan, strictestGeography) %>% drop_na(strictestGeography, finalOrgan) %>% group_by(strictestGeography) %>% summarise(geoGroups = length(strictestGeography)) %>% arrange(desc(geoGroups)) %>% as.data.frame
   
-allSRAFinal %>% count(finalOrgan, strictestRace) %>% drop_na(strictestRace) %>% group_by(strictestRace) %>% summarise(raceGroups = length(strictestRace)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+allSRAFinal %>% count(finalOrgan, strictestRace) %>% drop_na(strictestRace, finalOrgan) %>% group_by(strictestRace) %>% summarise(raceGroups = length(strictestRace)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+
+allSRAFinal %>% drop_na(strictestRace) %>% filter(!grepl("White", finalRace)) %>% filter(is.na(finalOrgan))
+allSRAFinal %>% drop_na(strictestRace) %>% filter(grepl("White", finalRace)) %>% filter(is.na(finalOrgan))
+
+
+
 
 # And now some alluvial plots, for funsies and supplementary data:
 allSRAFinal %>% drop_na(strictestGeography) %>% count(worldRegion)
