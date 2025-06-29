@@ -293,7 +293,6 @@ raceClean %>% group_by(SRA.Study) %>%
   summarise(n = size, meanSize = mean(size), meanRace = mean(studyRace), maxSize = max(size), maxRace = max(studyRace), sdSize = sd(size), sdRace = sd(studyRace))
 
 # And now the numbers by country:
-####### NOTE YOU ARE HERE!!!!
 allSRAFinal %>% drop_na(finalCountry, strictestRace) %>% count(finalCountry, strictestRace)
 
 allSRAFinal %>% drop_na(finalCountry, strictestRace) %>% count(finalCountry, strictestRace)
@@ -304,6 +303,14 @@ geographyClean %>% group_by(SRA.Study) %>% count(strictestGeography) %>% group_b
 
 raceClean %>% group_by(SRA.Study) %>% count(strictestRace) %>% group_by(strictestRace) %>% 
   summarise(size = sum(n), studyRace = n_distinct(SRA.Study), mean = mean(n), max = max(n), sd = sd(n)) 
+
+# We want a quick t-test on whether these are the same number of samples (we know they are not)
+
+euroStudies <- geographyClean %>% filter(strictestGeography == "Europe") %>% count(SRA.Study)
+oceaniaStudies <- geographyClean %>% filter(strictestGeography == "Oceania") %>% count(SRA.Study)
+africaStudies <- geographyClean %>% filter(strictestGeography == "Sub-Saharan Africa") %>% count(SRA.Study)
+
+t.test(euroStudies$n, oceaniaStudies$n) 
 ```
 
 ## 2. And by who? Where is the sequencing happening? 
@@ -686,23 +693,22 @@ ggsave("fig3_organ_by_descriptor_slim.png", width = 7, height = 4.5)
 # Some statistics: The percentage of samples that each tissue accounts for, and how many descriptors are associated:
 allSRAFinal %>% count(hasDescriptor, finalOrgan) %>% group_by(hasDescriptor) %>% summarise(finalOrgan = finalOrgan, n = n, proportion = n/sum(n)) %>% as.data.frame
 
-allSRAFinal %>% count(finalOrgan, strictestGeography) %>% drop_na(strictestGeography, finalOrgan) %>% group_by(finalOrgan) %>% summarise(geoGroups = length(finalOrgan)) %>% arrange(desc(geoGroups)) %>% as.data.frame
+allSRAFinal %>% drop_na(strictestGeography, finalOrgan) %>% count(finalOrgan, strictestGeography) %>% group_by(finalOrgan) %>% summarise(geoGroups = length(finalOrgan)) %>% arrange(desc(geoGroups)) %>% as.data.frame
   
-allSRAFinal %>% count(finalOrgan, strictestRace) %>% drop_na(strictestRace, finalOrgan) %>% group_by(finalOrgan) %>% summarise(raceGroups = length(finalOrgan)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+allSRAFinal %>% drop_na(strictestRace, finalOrgan) %>% count(finalOrgan, strictestRace) %>% group_by(finalOrgan) %>% summarise(raceGroups = length(finalOrgan)) %>% arrange(desc(raceGroups)) %>% as.data.frame
 
 # And how many tissues is each descriptor associated with?
 allSRAFinal %>% drop_na(strictestGeography, finalOrgan) %>% count(finalOrgan) 
 allSRAFinal %>% drop_na(strictestRace, finalOrgan) %>% count(finalOrgan) 
 
-allSRAFinal %>% count(finalOrgan, strictestGeography) %>% drop_na(strictestGeography, finalOrgan) %>% group_by(strictestGeography) %>% summarise(geoGroups = length(strictestGeography)) %>% arrange(desc(geoGroups)) %>% as.data.frame
+allSRAFinal %>% drop_na(strictestGeography, finalOrgan) %>% count(finalOrgan, strictestGeography) %>% group_by(strictestGeography) %>% summarise(geoGroups = length(strictestGeography)) %>% arrange(desc(geoGroups)) %>% as.data.frame
   
-allSRAFinal %>% count(finalOrgan, strictestRace) %>% drop_na(strictestRace, finalOrgan) %>% group_by(strictestRace) %>% summarise(raceGroups = length(strictestRace)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+allSRAFinal %>% drop_na(strictestRace, finalOrgan) %>% count(finalOrgan, strictestRace) %>% group_by(strictestRace) %>% summarise(raceGroups = length(strictestRace)) %>% arrange(desc(raceGroups)) %>% as.data.frame
+
+allSRAFinal %>% drop_na(strictestRace, finalOrgan) %>% count(finalOrgan, strictestRace) %>% group_by(strictestRace) %>% as.data.frame
 
 allSRAFinal %>% drop_na(strictestRace) %>% filter(!grepl("White", finalRace)) %>% filter(is.na(finalOrgan))
 allSRAFinal %>% drop_na(strictestRace) %>% filter(grepl("White", finalRace)) %>% filter(is.na(finalOrgan))
-
-
-
 
 # And now some alluvial plots, for funsies and supplementary data:
 allSRAFinal %>% drop_na(strictestGeography) %>% count(worldRegion)
@@ -867,6 +873,10 @@ ggsave("fig4_disease_by_descriptor_slim.pdf", width = 7, height = 4.5)
 ggsave("fig4_disease_by_descriptor_slim.png", width = 7, height = 4.5)
 
 # Some statistics: The percentage of samples that each tissue accounts for, and how many descriptors are associated:
+options(scipen = 20)
+
+allSRAFinal %>% drop_na(finalDisease) %>% count(finalDisease) %>% summarise(finalDisease = finalDisease, n = n, proportion = n/sum(n)) %>% as.data.frame
+
 allSRAFinal %>% count(hasDescriptor, finalDisease) %>% group_by(hasDescriptor) %>% summarise(finalDisease = finalDisease, n = n, proportion = n/sum(n)) %>% as.data.frame
 
 allSRAFinal %>% count(worldRegion, finalDisease) %>% group_by(worldRegion) %>% summarise(finalDisease = finalDisease, n = n, proportion = n/sum(n)) %>% arrange(finalDisease) %>% as.data.frame
@@ -924,7 +934,7 @@ ggsave("fig4_disease_by_race_faceted.png", width=6, height=9)
 
 ### A new figure 4 that combines figures 3 and 4
 
-Here we are simply playing with plots, no new analyses being done at all, but we remove legends from the previous figure 4 panels, because they're not needed. Miraculously it all fits, otherwise
+Here we are simply playing with plots, no new analyses being done at all, but we remove legends from the previous figure 4 panels, because they're not needed. Miraculously it all fits.
 
 ```{r combine-tissue-disease}
 geoDiseaseSlim2 <- geoDiseaseSlim +
