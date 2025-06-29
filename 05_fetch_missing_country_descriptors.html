@@ -436,7 +436,12 @@ getSubmitter
 getSubmitterdf &lt;- as.data.frame(getSubmitter)
 getSubmitterdf$SRA &lt;- rownames(getSubmitterdf)
 
-# And now we add that info back to the relevant column, and replace the GEO calls. I honestly can&#39;t remember if I need to vectorise or not but whatever. 
+write.table(getSubmitterdf, file = &quot;20250629_final_Site_SRA_results.tsv&quot;, sep=&quot;\t&quot;, quote=F, eol=&quot;\n&quot;)</code></pre>
+<p>And now we add that info back to the relevant column, and replace the
+GEO calls. I honestly can’t remember if I need to vectorise or not but
+whatever.</p>
+<pre class="r"><code>getSubmitterdf &lt;- read.table(&quot;20250629_final_Site_SRA_results.tsv&quot;, header=T, sep=&quot;\t&quot;)
+
 allSRAFinal$finalSite &lt;- NA
 
 for (i in 1:nrow(getSubmitterdf)){
@@ -446,10 +451,11 @@ for (i in 1:nrow(getSubmitterdf)){
 allSRAFinal$finalSite &lt;- coalesce(allSRAFinal$finalSite, allSRAFinal$Center.Name)
 
 # Is GEO really gone???
-length(unique(allSRAFinal$Center.Name))
-length(unique(allSRAFinal$finalSite)) # Well that definitely increased, so that&#39;s good. 
-
-siteTable &lt;- allSRAFinal %&gt;% count(finalSite, SRA.Study)
+length(unique(allSRAFinal$Center.Name))</code></pre>
+<pre><code>## [1] 120</code></pre>
+<pre class="r"><code>length(unique(allSRAFinal$finalSite)) # Well that definitely increased, so that&#39;s good. </code></pre>
+<pre><code>## [1] 171</code></pre>
+<pre class="r"><code>siteTable &lt;- allSRAFinal %&gt;% count(finalSite, SRA.Study)
 
 # I still need to work out what is in what country, but at least I have a single table... 
 write.table(siteTable, file=&quot;20250517_final_Site_descriptors_raw.tsv&quot;, quote=F, row.names=F, sep=&quot;\t&quot;)</code></pre>
@@ -495,6 +501,97 @@ for (i in 1:nrow(countryList)){
 ##          54          34          28          27          26          23 
 ##      Israel 
 ##          11</code></pre>
+<pre class="r"><code>table(is.na(allSRAFinal$finalSite))</code></pre>
+<pre><code>## 
+## FALSE 
+## 23935</code></pre>
+<pre class="r"><code># This is very nice but there&#39;s a problem... which is that some studies have multiple submitters. So we do this by institution name instead.  
+
+for (i in 1:nrow(countryList)){
+ tryCatch({
+  allSRAFinal[allSRAFinal$finalSite %in% countryList$finalSite[i],]$finalCountry &lt;- countryList$Country[i]}, error = function(e) {
+    message(sprintf(&quot;Error at i = %d: %s&quot;, i, e$message))
+  })    
+}</code></pre>
+<pre><code>## Error at i = 20: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 31: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 32: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 33: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 45: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 46: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 53: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 54: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 55: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 56: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 63: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 65: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 66: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 69: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 78: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 82: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 83: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 91: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 99: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 102: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 106: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 108: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 120: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 121: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 122: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 129: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 138: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 139: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 143: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 144: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 145: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 146: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 147: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 148: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 151: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 152: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 157: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 158: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 165: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 166: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 168: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 170: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 173: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 174: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 176: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 177: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 179: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 180: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 186: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 193: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 194: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 195: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 197: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 201: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 202: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 203: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 206: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 215: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 257: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 258: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 266: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 267: replacement has 1 row, data has 0</code></pre>
+<pre><code>## Error at i = 270: replacement has 1 row, data has 0</code></pre>
+<pre class="r"><code>sort(table(allSRAFinal$finalCountry), decreasing=T)</code></pre>
+<pre><code>## 
+##         USA     Belgium          UK      Canada   Singapore       China 
+##       14894        2455        2018        1144         452         449 
+##       Korea Switzerland     Germany      Taiwan       Spain      Russia 
+##         411         388         253         222         186         166 
+##       Japan   Australia     Denmark      Sweden       Italy      Brazil 
+##         139         125         124         118          99          57 
+##     Hungary      Poland      Greece      Mexico       India    Slovakia 
+##          54          34          28          27          26          23 
+##      Israel 
+##          11</code></pre>
+<pre class="r"><code>table(is.na(allSRAFinal$finalSite))</code></pre>
+<pre><code>## 
+## FALSE 
+## 23935</code></pre>
 <pre class="r"><code># Anyhow, let&#39;s make sure we only do this once:
 saveRDS(allSRAFinal, &quot;20250517_allSRAAncestryTissuesDiseaseCenters.rds&quot;)</code></pre>
 

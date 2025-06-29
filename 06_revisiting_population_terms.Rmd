@@ -281,7 +281,7 @@ allSRAFinal <- allSRAFinal %>%
     as.data.frame()
 
 # And let's remove the intermediate columns because they're annoying:
-allSRAFinal <- allSRAFinal[,c(1:40,43:46)]
+allSRAFinal <- allSRAFinal[,c(1:41,44:47)]
 
 # Some big changes in White/European and Black/Subsaharan Africa if we are very strict with terms...
 allSRAFinal %>% count(finalGeography, strictGeography, strictestGeography)

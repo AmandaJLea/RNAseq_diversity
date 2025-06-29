@@ -46,7 +46,14 @@ getSubmitter
 getSubmitterdf <- as.data.frame(getSubmitter)
 getSubmitterdf$SRA <- rownames(getSubmitterdf)
 
-# And now we add that info back to the relevant column, and replace the GEO calls. I honestly can't remember if I need to vectorise or not but whatever. 
+write.table(getSubmitterdf, file = "20250629_final_Site_SRA_results.tsv", sep="\t", quote=F, eol="\n")
+```
+
+And now we add that info back to the relevant column, and replace the GEO calls. I honestly can't remember if I need to vectorise or not but whatever. 
+
+```{r depositing-site-2, include=T}
+getSubmitterdf <- read.table("20250629_final_Site_SRA_results.tsv", header=T, sep="\t")
+
 allSRAFinal$finalSite <- NA
 
 for (i in 1:nrow(getSubmitterdf)){
@@ -58,7 +65,6 @@ allSRAFinal$finalSite <- coalesce(allSRAFinal$finalSite, allSRAFinal$Center.Name
 # Is GEO really gone???
 length(unique(allSRAFinal$Center.Name))
 length(unique(allSRAFinal$finalSite)) # Well that definitely increased, so that's good. 
-
 siteTable <- allSRAFinal %>% count(finalSite, SRA.Study)
 
 # I still need to work out what is in what country, but at least I have a single table... 
@@ -80,6 +86,19 @@ for (i in 1:nrow(countryList)){
 }
 
 sort(table(allSRAFinal$finalCountry), decreasing=T)
+table(is.na(allSRAFinal$finalSite))
+
+# This is very nice but there's a problem... which is that some studies have multiple submitters. So we do this by institution name instead.  
+
+for (i in 1:nrow(countryList)){
+ tryCatch({
+  allSRAFinal[allSRAFinal$finalSite %in% countryList$finalSite[i],]$finalCountry <- countryList$Country[i]}, error = function(e) {
+    message(sprintf("Error at i = %d: %s", i, e$message))
+  })    
+}
+
+sort(table(allSRAFinal$finalCountry), decreasing=T)
+table(is.na(allSRAFinal$finalSite))
 
 # Anyhow, let's make sure we only do this once:
 saveRDS(allSRAFinal, "20250517_allSRAAncestryTissuesDiseaseCenters.rds")

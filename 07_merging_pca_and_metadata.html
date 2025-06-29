@@ -10,7 +10,7 @@
 
 
 
-<meta name="date" content="2025-06-06" />
+<meta name="date" content="2025-06-29" />
 
 <title>Merging the PCA with our calls, part 1</title>
 
@@ -350,7 +350,7 @@ display: none;
 
 
 <h1 class="title toc-ignore">Merging the PCA with our calls, part 1</h1>
-<h4 class="date">2025-06-06</h4>
+<h4 class="date">2025-06-29</h4>
 
 </div>
 
@@ -438,20 +438,27 @@ head(fromKasper)</code></pre>
 ## 48645         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
 ## 48646         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
 ## 48647         &lt;NA&gt;        &lt;NA&gt;          &lt;NA&gt;     White           &lt;NA&gt;     &lt;NA&gt;
-##             finalSystem finalOrgan finalDisease finalCountry strictestGeography
-## 48582           hepatic      liver         &lt;NA&gt;        China               Asia
-## 48583           hepatic      liver         &lt;NA&gt;        China               Asia
-## 48644 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;
-## 48645 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;
-## 48646 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;
-## 48647 connective tissue       &lt;NA&gt;         &lt;NA&gt;        Spain               &lt;NA&gt;
-##       strictestRace strictGeography strictRace
-## 48582          &lt;NA&gt;            Asia       &lt;NA&gt;
-## 48583          &lt;NA&gt;            Asia       &lt;NA&gt;
-## 48644         White            &lt;NA&gt;      White
-## 48645         White            &lt;NA&gt;      White
-## 48646         White            &lt;NA&gt;      White
-## 48647         White            &lt;NA&gt;      White</code></pre>
+##             finalSystem finalOrgan finalDisease
+## 48582           hepatic      liver         &lt;NA&gt;
+## 48583           hepatic      liver         &lt;NA&gt;
+## 48644 connective tissue       &lt;NA&gt;         &lt;NA&gt;
+## 48645 connective tissue       &lt;NA&gt;         &lt;NA&gt;
+## 48646 connective tissue       &lt;NA&gt;         &lt;NA&gt;
+## 48647 connective tissue       &lt;NA&gt;         &lt;NA&gt;
+##                                                                          finalSite
+## 48582 Renji Hospital Affiliated to Shanghai Jiaotong University School of Medicine
+## 48583 Renji Hospital Affiliated to Shanghai Jiaotong University School of Medicine
+## 48644                                           Angiogenesis, Oncology Area, CIBIR
+## 48645                                           Angiogenesis, Oncology Area, CIBIR
+## 48646                                           Angiogenesis, Oncology Area, CIBIR
+## 48647                                           Angiogenesis, Oncology Area, CIBIR
+##       finalCountry strictestGeography strictestRace strictGeography strictRace
+## 48582        China               Asia          &lt;NA&gt;            Asia       &lt;NA&gt;
+## 48583        China               Asia          &lt;NA&gt;            Asia       &lt;NA&gt;
+## 48644        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
+## 48645        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
+## 48646        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White
+## 48647        Spain               &lt;NA&gt;         White            &lt;NA&gt;      White</code></pre>
 <pre class="r"><code># Let&#39;s recode those annoying samples without pop label so we can drop them whenever we need to. 
 fromKasper &lt;- fromKasper %&gt;%
   mutate(pred_pop = na_if(pred_pop, &quot;&quot;)) %&gt;%
@@ -683,11 +690,11 @@ processedBPs &lt;- read.csv(&quot;final_bioproject_biosample_runlist.csv&quot;)
 kasperComplete &lt;- inner_join(fromKasper, processedBPs, join_by(&quot;sub_pop&quot; == &quot;Run&quot;))
 allSRAFinal &lt;- left_join(allSRAFinal, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;))
 dim(allSRAFinal) </code></pre>
-<pre><code>## [1] 27660    55</code></pre>
+<pre><code>## [1] 27660    56</code></pre>
 <pre class="r"><code># But that&#39;s too many rows because we&#39;re operating at the Run level rather than the BioSample level, so let&#39;s clean that mess up:
 allSRAFinal &lt;- allSRAFinal %&gt;% distinct(BioSample, .keep_all=TRUE)
 dim(allSRAFinal)</code></pre>
-<pre><code>## [1] 23935    55</code></pre>
+<pre><code>## [1] 23935    56</code></pre>
 <pre class="r"><code># Can&#39;t help it I wanna tabulate already:
 allSRAFinal %&gt;% count(pred_pop, strictestGeography)</code></pre>
 <pre><code>##    pred_pop             strictestGeography    n
@@ -845,6 +852,36 @@ dim(allSRAFiltKasperLeft)</code></pre>
 ## 1 747964</code></pre>
 <pre class="r"><code>allSRAFiltKasperLeft %&gt;% drop_na(pred_pop) %&gt;% nrow()</code></pre>
 <pre><code>## [1] 226940</code></pre>
+<pre class="r"><code># And some basic statistics about this:
+allSRAFiltKasperLeft %&gt;% drop_na(assay) %&gt;% 
+  summarise(studies = n_distinct(SRA.Study), samples = n_distinct(BioSample), studies2 = n_distinct(BioProject))</code></pre>
+<pre><code>##   studies samples studies2
+## 1    4153  226940     4153</code></pre>
+<pre class="r"><code># And the missingness, for tabulating how many samples have descriptors...
+allSRAFiltKasperLeft %&gt;% drop_na(assay) %&gt;% filter(assay == &quot;rna-seq&quot;) %&gt;% count(missingness)</code></pre>
+<pre><code>##    missingness     n
+## 1       (0,10] 45854
+## 2      (10,20] 37731
+## 3      (20,30]  8536
+## 4      (30,40]  3380
+## 5      (40,50]  2734
+## 6      (50,60]  1325
+## 7      (60,70]   823
+## 8      (70,80]   684
+## 9      (80,90]   296
+## 10    (90,100]   392</code></pre>
+<pre class="r"><code>allSRAFiltKasperLeft %&gt;% drop_na(assay) %&gt;% filter(assay == &quot;scrna-seq&quot;) %&gt;% count(missingness)</code></pre>
+<pre><code>##    missingness     n
+## 1       (0,10]   275
+## 2      (10,20]  2188
+## 3      (20,30]  2947
+## 4      (30,40]  2784
+## 5      (40,50]  3179
+## 6      (50,60]  4492
+## 7      (60,70]  9084
+## 8      (70,80] 15953
+## 9      (80,90] 25398
+## 10    (90,100] 42073</code></pre>
 <pre class="r"><code>saveRDS(allSRAFiltKasperLeft, file=&quot;20250518_allSRACleanRazi_left_join_all_samples.rds&quot;)
 
 allSRAFiltKasperRight &lt;- right_join(allSRAFilt, kasperComplete, join_by(&quot;BioSample&quot; == &quot;BioSample&quot;)) %&gt;% distinct(BioSample, .keep_all=T)
