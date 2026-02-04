@@ -1,0 +1,150 @@
+---
+title: "Population descriptor clean up and assignments"
+layout: "post"
+tags: "diversity"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+This file produces the final version of the SRA table, all ready for analysing. It follows closely from my analyses of the 15th of May, but I just wanted one final document after the last set of emails to Grace, Audrey and Lani, to make sure we were all on the same page; see notebook entry from 2024-06-13 for more details - I've trimmed out some of the commentary here.
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(tidyverse)
+library(viridis)
+```
+
+First we load the SRA table and clean it up a bit, removing duplicated BioSamples and all files without any sort of population descriptor associated with it:
+
+```{r big dataset, eval=T}
+old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
+new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
+
+names(new)[8] <- "Cell_line"
+
+allSRA <- rbind.fill(old, new)
+dim(allSRA)
+allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+# allSRA <- unique(allSRA) # This is from Amanda, I do distinct below instead.
+dim(allSRA) # Yep that cleaned things up
+
+# We know the metadata is sometimes incomplete across the same study (eg SRP186088), and we want to filter down to studies with more than 10 biosamples and a descriptor. So - here we simply keep the studies with 10 BioSamples:
+
+allSRACounts <- allSRA %>% group_by(SRA.Study) %>% summarise(bioSamples = n_distinct(BioSample))
+keepStudies <- allSRACounts[allSRACounts$bioSamples >= 10,] 
+allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$SRA.Study,]
+dim(allSRAFilt) # Most of them stick around...
+
+# Some statistics before filtering for 10 samples or more
+length(unique(allSRA$SRA.Study))
+length(unique(allSRA$BioSample))
+nrow(allSRA)
+sourceAll <- allSRA %>% distinct(BioSample, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+sourceAll
+
+# And at the study level? Because that's how the decision gets made:
+studyAll <- allSRA %>% distinct(SRA.Study, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+studyAll
+
+# And after filtering for 10 BioSamples or more
+length(unique(allSRAFilt$SRA.Study))
+length(unique(allSRAFilt$BioSample))
+nrow(allSRAFilt)
+source10 <- allSRAFilt %>% distinct(BioSample, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+source10
+
+allSRAFilt <- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
+
+# And now after cleaning for pop descriptors:
+length(unique(allSRAFilt$SRA.Study))
+length(unique(allSRAFilt$BioSample))
+nrow(allSRAFilt)
+sourcePop <- allSRAFilt %>% distinct(BioSample, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+sourcePop
+
+studyPop <- allSRAFilt %>% distinct(SRA.Study, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+studyPop
+
+sourcePop$n/source10$n
+sourcePop$n/sourceAll$n
+
+studyPop$n/studyAll$n
+
+```
+
+#### Are there any repeated BioSamples in here?
+
+```{r biosample dups}
+length(unique(allSRAFilt$BioSample))
+dim(allSRAFilt)
+
+allBS <- table(allSRAFilt$BioSample)
+head(sort(allBS, decreasing=T))
+```
+
+This is as expected (yes there are repeats), so long as there's no confusion over ID terms, which there was for a single study of Ugandans when I flipped the order for filtering, so... where are they coming from?
+
+```{r confirm-biosamples}
+# I'm only checking the four big terms, and they seem fine:
+multPopBS <- allSRAFilt %>% count(BioSample, Population)
+multPopTabled <- table(multPopBS$BioSample)
+head(sort(multPopTabled, decreasing=T))
+
+multRaceBS <- allSRAFilt %>% count(BioSample, RACE)
+multRaceTabled <- table(multRaceBS$BioSample)
+head(sort(multRaceTabled, decreasing=T))
+
+multEthnicityBS <- allSRAFilt %>% count(BioSample, ETHNICITY)
+multEthnicityTabled <- table(multEthnicityBS$BioSample)
+head(sort(multEthnicityTabled, decreasing=T))
+
+multancestryBS <- allSRAFilt %>% count(BioSample, ancestry)
+multancestryTabled <- table(multancestryBS$BioSample)
+head(sort(multancestryTabled, decreasing=T))
+
+# So now we finally clean up to one row per biosample and check again for studies with under 10 BioSamples (could just do it here, tbh) 
+allSRAClean <- allSRAFilt %>% distinct(BioSample, .keep_all=TRUE)
+allSRACleanCounts <- allSRAClean %>% group_by(SRA.Study) %>% summarise(bioSamples = n_distinct(BioSample))
+keepStudies2 <- allSRACleanCounts[allSRACleanCounts$bioSamples >= 10,] 
+allSRAClean <- allSRAClean[allSRAClean$SRA.Study %in% keepStudies2$SRA.Study,]
+
+# And we can do an alternative extra round of filtering here for studies were at least 10 BioSamples have a pop descriptor
+allSRACleanAlt <- allSRAFilt %>% distinct(BioSample, .keep_all=TRUE)
+
+dim(allSRAClean)
+length(unique(allSRAClean$BioSample))
+length(unique(allSRAClean$SRA.Study))
+
+dim(allSRACleanAlt)
+length(unique(allSRACleanAlt$BioSample))
+length(unique(allSRACleanAlt$SRA.Study))
+
+saveRDS(allSRAClean, file="20250517_allSRAClean.rds")
+saveRDS(allSRACleanAlt, file="20250517_allSRACleanAlt.rds")
+```
+
+Why do we lose one study in the alt one??? Well, turns out there's one that's been submitted twice, compare SRP330852 and SRP375823... same samples but submitted one year apart. But I think we are satisfied with these numbers.
+

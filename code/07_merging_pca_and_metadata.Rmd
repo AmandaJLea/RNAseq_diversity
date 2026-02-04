@@ -1,0 +1,380 @@
+---
+title: "Merging the PCA with our calls, part 1"
+layout: "post"
+tags: "diversity"
+output: html_document
+date: "`r Sys.Date()`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=F}
+knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+# But we also have to do this manually because R studio is stupid: 
+setwd(knitr::opts_knit$get("root.dir"))
+library(ggplot2)
+library(data.table)
+library(plyr)
+library(reshape)
+library(viridis)
+library(rentrez)
+library(tidyverse)
+library(xml2)
+library(R.utils)
+
+options(device = "quartz")
+```
+
+So, looking at the data from Razi et al I realised that... they have not cleaned out things like Hela etc, which I have. So we're going to try to that, and then we're going to try to overlap their samples with our own list of primary samples, which is going to require some thinking on my part to remember what we were doing in the first place. 
+
+The first thing we need to do is find equivalent identifiers between our data and theirs. They use DRR something something which does not match our SRA identifiers, but I have faith in my ability to reconcile the two. First we check if the identifiers were in our raw SRA dumps:
+
+Ultimately we want to 
+1. clean the data to remove known cell lines like HeLa
+2. compare with a sankey between our calls from meta data and his calls from genotype, including unassigned. 
+3. can also check how often the same biosample is assigned different ancestries by Kasper lol. 
+
+```{r read-data-and-ids}
+fromKasper <- read.csv("from_Kasper_suppTable3.csv")
+allSRAFinal <- readRDS("20250517_allSRAFinal.rds") #
+
+head(fromKasper)
+head(allSRAFinal)
+
+# Let's recode those annoying samples without pop label so we can drop them whenever we need to. 
+fromKasper <- fromKasper %>%
+  mutate(pred_pop = na_if(pred_pop, "")) %>%
+  filter(!is.na(pred_pop))
+```
+
+And the sad answer is no... their ID is a run ID, whereas mine is a biosample ID... but they should not be hard to link... if I could work out what fields I want. 
+
+But! We do have SRA.Study ids in common, so we just need to grab the biosample ID that corresponds to Razi et al's run ID, and we are good to go for all downstream merging! Here is a brief sanity check:
+
+```{r convert-run-to-biosample-1, eval=F}
+# We start with a test ID from Kasper, and a test ID from me for the same sample:
+kasperID <- "ERR188055" # from Kasper
+igrID <- "SAMEA1573329" # from me -
+
+kOnion <- entrez_search(db = "sra", term = kasperID)
+iOnion <- entrez_search(db = "sra", term = igrID)
+
+kOnion[1]
+iOnion[1]
+```
+
+So that can be done, but we gotta grab the right IDs only, which makes it harder. Let's start with two or three studies, then. It also seems like we can cut down on the number of calls to NCBI by looking at studies instead of each run individually, which should make this faster and less embarrassing.
+
+```{r from-bio-project-to-everything-functions}
+# This is just the functions, so it's ok to load them. 
+
+# Function to get Runs and BioSamples for a BioProject
+# Times out after five minutes because sometimes you just gotta know when to give up. Removed the multiple attempts, I'll just make a list of missing BPs later and rerun.
+get_runs_and_biosamples <- function(bp_id, timeout=180) {
+  result <- tryCatch({
+    withTimeout({ 
+      # For debugging:
+      startTime <- Sys.time()
+      print(paste0("Now processing ", bp_id))
+
+      # Let's not get banned from NCBI... they say less than 3 queries per second, so... 
+      Sys.sleep(1)
+
+      # Search for BioProject in SRA (with web history)
+      search_res <- entrez_search(db = "sra", term = paste0(bp_id, "[BioProject] AND TRANSCRIPTOMIC[Src]"), use_history = TRUE, retmax = 2000)
+    
+      if (length(search_res$ids) == 0) {
+        return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
+      }
+    
+      # Retrieve webenv and query_key for pagination
+      webenv <- search_res$web_history$WebEnv
+      query_key <- search_res$web_history$QueryKey
+      
+      # Initialize variables for fetching results in chunks
+      chunk_size <- 200
+      all_results <- list()
+      batch_start <- 0  # Initial offset for pagination
+    
+      repeat {
+        # Fetch results in chunks using WebEnv and Query Key
+        fetch_res <- entrez_fetch(db = "sra", web_history = search_res, rettype = "xml", WebEnv = webenv, query_key = query_key, parsed=FALSE, retstart = batch_start, retmax = chunk_size)
+        xml_doc <- read_xml(fetch_res)
+    
+        # Extract experiment packages (which contains multiple runs)
+        packages <- xml_find_all(xml_doc, ".//EXPERIMENT_PACKAGE")
+        
+        # Extract Run and BioSample info for each package
+        records <- lapply(packages, function(pkg) {
+          run_nodes <- xml_find_all(pkg, ".//RUN_SET/RUN")
+          run_accessions <- xml_attr(run_nodes, "accession")
+          
+          biosample_node <- xml_find_first(pkg, ".//EXTERNAL_ID[@namespace='BioSample']")
+          biosample_id <- if (!is.na(biosample_node)) xml_text(biosample_node) else NA
+          
+          data.frame(Run = run_accessions, BioSample = biosample_id, BioProject = bp_id, stringsAsFactors = FALSE)
+        })
+      
+        all_results <- append(all_results, records)
+        
+        # Increment to fetch the next batch
+        batch_start <- batch_start + chunk_size
+        
+        # Stop fetching if fewer results are returned than requested
+        if (length(records) < chunk_size) {
+          break
+        }
+      }
+    
+      # Combine results from all batches
+      endTime <- Sys.time()
+      print(paste0("Finished processing ", bp_id, ". It took ", round(endTime - startTime, 2), " seconds."))
+      return(bind_rows(all_results))
+    }, timeout = timeout, onTimeout = "error")
+  }, error = function(e) {
+    message(paste("Error or timeout for BioProject", bp_id, ":", e$message))
+    return(data.frame(Run = NA, BioSample = NA, BioProject = bp_id, stringsAsFactors = FALSE))
+  })
+
+  return(result)
+}
+
+
+```
+
+The function has been defined and now let's do a test run with a small number of bioProjects (actually not run, just included here for completeness):
+
+```{r from-bioproject-to-everything-2, eval=F}
+# For debugging:
+# kasperBP <- "DRP000499"
+# testBPs <- lapply(kasperBP, get_runs_and_biosamples) # Runs fine, do a real one now
+
+kasperBPs <- c("DRP000366", "DRP000425", "DRP000499", "DRP000527", "DRP000622", "DRP000665", "DRP000929", "DRP000987", "DRP001048", "DRP001149", "DRP001150", "DRP001194", "DRP001219", "DRP001220", "DRP001280", "DRP001797", "DRP001919", "DRP001953", "DRP002315", "DRP005280") # Has one of the edge cases
+testBPs <- lapply(kasperBPs, get_runs_and_biosamples)
+testIDs <- bind_rows(testBPs)
+
+#Let's compare with what he had. First, an inner_join
+sraToKasper <- inner_join(testIDs, fromKasper, join_by("Run" == "sub_pop"))
+dim(sraToKasper) # That gives 711 
+
+dim(fromKasper[fromKasper$pop %in% kasperBPs,]) # and that also gives 711... 
+
+fromKasperSlim <- fromKasper[fromKasper$pop %in% kasperBPs,]
+
+table(testIDs$BioProject)
+table(fromKasperSlim$pop)
+
+table(testIDs$BioProject) - table(fromKasperSlim$pop)
+
+kasperComplete <- inner_join(fromKasperSlim, testIDs, join_by("sub_pop" == "Run"))
+allSRAFinalKasper <- inner_join(allSRAFinal, kasperComplete, join_by("BioSample" == "BioSample"))
+
+dim(allSRAFinalKasper) 
+
+# But that's too many rows because we're operating at the Run level rather than the BioSample level, so let's clean that mess up:
+allSRAFinalKasper <- allSRAFinalKasper %>% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAFinalKasper)
+
+# Can't help it I wanna tabulate already:
+allSRAFinalKasper %>% count(pred_pop, strictestGeography)
+allSRAFinalKasper %>% count(pred_pop, strictestRace)
+allSRAFinalKasper %>% filter(pred_pop == "SAS")
+```
+
+Ok this works - took some debugging. So now let's run the entire set of queries, 100 at a time so it doesn't completely burn down. Note that this took over 12 hours to run before I added the time out steps above:
+
+```{r from-bio-project-to-everything-3, eval=F}
+
+# Batch processing function
+process_in_batches <- function(bioProjects, batch_size = 100, delay = 1, file_prefix) {
+  # Split the BioProjects list into smaller chunks
+  batches <- split(bioProjects, ceiling(seq_along(bioProjects) / batch_size))
+  
+  # Process each batch sequentially
+  all_results <- list()
+  
+  total_batches <- length(batches)  # Total number of batches
+  
+  for (i in seq_along(batches)) {
+    # Process each BioProject in the batch
+    batch <- batches[[i]]
+    batch_results <- lapply(batch, get_runs_and_biosamples)
+    
+    # Combine the results of this batch
+    all_results <- append(all_results, batch_results)
+
+    # Save progress after each batch (you could save it as CSV or RDS)
+    final_results <- bind_rows(all_results)
+    write.csv(final_results, paste0(file_prefix, "bioproject_biosample_runlist.csv"), row.names = FALSE)  # Save as CSV
+
+    # Print a message after each batch is done
+    message(paste("Batch", i, "of", total_batches, "completed."))
+
+    # Optional: Add delay after each batch (to avoid rate limits)
+    Sys.sleep(delay)  # Delay after each batch
+  }
+  
+  # Combine all the results into one data frame
+  final_results <- bind_rows(all_results)
+  
+  return(final_results)
+  }
+
+# Run the batch processing for the BioProjects
+# bpsToGrab <- unique(fromKasper$pop)[1:100] # for testing some of the larger ones...
+bpsToGrab <- unique(fromKasper$pop)
+
+# If this fails again we can limit the number of queries to those with more than 10 runs...
+
+allBPs <- process_in_batches(bpsToGrab, batch_size = 25, delay = 1, file_prefix = "all_")
+```
+
+```{r from-bio-project-to-everything-4, eval=F}
+# We read everything in and do a repeat run for everything that failed the first time around (read it in because we are not interested in rerunning the previous bit of code, even by accident)
+
+allBPs <- read.csv("all_bioproject_biosample_runlist.csv", header=T)
+dim(allBPs)
+
+fromKasperCheck <- left_join(fromKasper, allBPs, join_by("sub_pop" == "Run")) %>% filter(is.na(BioSample))
+dim(fromKasperCheck) # That's a lot of missingness... what BPs go with it?
+
+bpsToRepeat <- fromKasperCheck %>% count(pop) # 61 BPs missing some sort of info
+
+repeatBPs <- process_in_batches(bpsToRepeat$pop, batch_size = 25, delay = 1, file_prefix = "repeats_") # Some of these are clearly doomed and return NA, but others may be salvageable?
+
+processedBPs <- bind_rows(allBPs, repeatBPs)
+fromKasperCheck <- left_join(fromKasper, processedBPs, join_by("sub_pop" == "Run")) %>% filter(is.na(BioSample)) 
+dim(fromKasperCheck) # That's a lot of missingness... what BPs go with it?
+
+bpsToThreepeat <- fromKasperCheck %>% count(pop) # Down to 48...
+
+# I believe in third chances! There's two huge ones in there that time out, so we can run those two individually with a longer time out and remove them from bpsToThreepeat so not everyone gets 10 mins before timing out:
+bigBP <- "SRP200058"
+biggerBP <- "SRP166108"
+
+hugeBPs <- c("SRP166108", "SRP200058")
+
+bpsToThreepeat <- bpsToThreepeat[!bpsToThreepeat$pop %in% hugeBPs,]
+
+bigBPout <- get_runs_and_biosamples(bigBP, timeout = 300)
+biggerBPout <- get_runs_and_biosamples(biggerBP, timeout = 600)
+
+threepeatBPs <- process_in_batches(bpsToThreepeat$pop, batch_size = 25, delay = 1, file_prefix = "threepeats_")
+
+processedBPs <- bind_rows(processedBPs, bigBPout)
+processedBPs <- bind_rows(processedBPs, biggerBPout)
+processedBPs <- bind_rows(processedBPs, threepeatBPs)
+fromKasperCheck <- left_join(fromKasper, processedBPs, join_by("sub_pop" == "Run")) %>% filter(is.na(BioSample)) 
+dim(fromKasperCheck) # From repeating things it really seems like some just fail out of spite, really, so there's no value in re-running things - we rescued most of the missing IDs.
+
+processedBPs <- processedBPs %>% distinct(Run, .keep_all = TRUE)
+dim(processedBPs)
+write.csv(processedBPs, file="final_bioproject_biosample_runlist.csv", quote=F, row.names=F)
+
+# And just so no one complains, here's what is missing:
+fromKasperCheck %>% count(pred_pop)
+```
+
+We analyse this at two levels (on its own, in the incorporating_dbgap script, and after merging with allSRAFinal; we do the latter here so we can go straight into the analyses in the next script)
+
+```{r merge-into-sra-final}
+# We repeat the steps we took before to do some joining:
+processedBPs <- read.csv("final_bioproject_biosample_runlist.csv")
+
+kasperComplete <- inner_join(fromKasper, processedBPs, join_by("sub_pop" == "Run"))
+allSRAFinal <- left_join(allSRAFinal, kasperComplete, join_by("BioSample" == "BioSample"))
+dim(allSRAFinal) 
+
+# But that's too many rows because we're operating at the Run level rather than the BioSample level, so let's clean that mess up:
+allSRAFinal <- allSRAFinal %>% distinct(BioSample, .keep_all=TRUE)
+dim(allSRAFinal)
+
+# Can't help it I wanna tabulate already:
+allSRAFinal %>% count(pred_pop, strictestGeography)
+allSRAFinal %>% count(pred_pop, strictestRace)
+# allSRAFinal %>% filter(pred_pop == "SAS")
+
+# Clean out some columns, and then onwards to analyses.
+allSRAFinal <- allSRAFinal %>% select(!all_of(c("pop", "BioProject", "acc", "zero_geno", "sub_pop")))
+
+saveRDS(allSRAFinal, file="20250517_allSRAFinalRazi.rds")
+```
+
+We also want to process their overall file in the same way as ours, so we can make comparisons later on, for figure 2 - down to studies with 10 distinct BioSamples or more, and we can do this two ways:
+
+1. Merge with our own SRA dump (there's some degree of missingness, but not much)
+2. Keep Razi et al sepatate. 
+
+```{r raw-sra-dump-merge, eval=T}
+old <- fread("SRA_metadata/20240613_run_selector_metadata.txt", na.strings=c(""," ","NA"), sep="\t")
+new <- fread("SRA_metadata/20240613_run_selector_metadata_post2019.txt", na.strings=c(""," ","NA"))
+
+names(new)[8] <- "Cell_line"
+
+allSRA <- rbind.fill(old, new)
+allSRA <- allSRA[allSRA$Organism == "Homo sapiens" & allSRA$LibrarySource== "TRANSCRIPTOMIC",]
+
+# We know the metadata is sometimes incomplete across the same study (eg SRP186088), and we want to filter down to studies with more than 10 biosamples and a descriptor. So - here we simply keep the studies with 10 BioSamples:
+allSRACounts <- allSRA %>% group_by(SRA.Study) %>% summarise(bioSamples = n_distinct(BioSample))
+keepStudies <- allSRACounts[allSRACounts$bioSamples >= 10,] 
+allSRAFilt <- allSRA[allSRA$SRA.Study %in% keepStudies$SRA.Study,]
+allSRAFilt <- allSRAFilt %>% distinct(BioSample, .keep_all = TRUE)
+dim(allSRAFilt) 
+
+# And after filtering for 10 BioSamples or more
+length(unique(allSRAFilt$BioSample))
+
+# And now we merge - this just keeps one row per BioSample considering only those we liked, which is what we want to do later on. 
+allSRAFiltKasperLeft <- left_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T)
+dim(allSRAFiltKasperLeft)
+allSRAFiltKasperLeft %>% count(pred_pop) # And these are the pop numbers
+allSRAFiltKasperLeft %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
+allSRAFiltKasperLeft %>% drop_na(pred_pop) %>% nrow()
+
+# And some basic statistics about this:
+allSRAFiltKasperLeft %>% drop_na(assay) %>% 
+  summarise(studies = n_distinct(SRA.Study), samples = n_distinct(BioSample), studies2 = n_distinct(BioProject))
+
+# And the missingness, for tabulating how many samples have descriptors...
+allSRAFiltKasperLeft %>% drop_na(assay) %>% filter(assay == "rna-seq") %>% count(missingness)
+allSRAFiltKasperLeft %>% drop_na(assay) %>% filter(assay == "scrna-seq") %>% count(missingness)
+
+saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join_all_samples.rds")
+
+allSRAFiltKasperRight <- right_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T)
+dim(allSRAFiltKasperRight)
+allSRAFiltKasperRight %>% count(pred_pop) # And these are the pop numbers
+allSRAFiltKasperRight %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
+
+# There's about 22k samples in recount that are not in our dump, and I'm curious as to why, but not curious enough to go digging deeply. Suspect most of them got dropped when I took out the studies with < 10 Biosamples
+dim(allSRAFiltKasperRight)[1] - allSRAFiltKasperLeft %>% drop_na(pred_pop) %>% nrow()
+
+saveRDS(allSRAFiltKasperRight, file="20250518_allSRACleanRazi_right_join.rds")
+
+# Before we finish writing things out, however, we want to ditch those samples that we know are derived from primary cell lines. Because we only have that info available for the rows that are also present in the SRA dump, we have to work on the left join only.  
+
+allSRAFiltKasperLeft %>% count(is.na(Cell_line))
+popularCellLines <- allSRAFiltKasperLeft %>% count(Cell_line, sort=T) 
+dim(popularCellLines)
+
+head(popularCellLines, n=20)
+
+# Let's clean up, then - and also get rid of all the samples without a genotype prediction from their data
+allSRAFiltKasperLeft <- allSRAFiltKasperLeft %>% 
+  filter(is.na(Cell_line)) %>%
+  filter(!is.na(pred_pop))
+dim(allSRAFiltKasperLeft)  
+allSRAFiltKasperLeft %>% count(pred_pop) # And these are the pop numbers
+allSRAFiltKasperLeft %>% count(pred_pop) %>% summarise(sum(n)) # And these are the pop numbers
+  
+saveRDS(allSRAFiltKasperLeft, file="20250518_allSRACleanRazi_left_join_no_cell_line.rds")
+```
+
+Finally, for the paper we will also want to be able to report how many of Kasper's samples we dropped because of cell line issues. Rather than have to generate that somewhere else, I do a quick inner join instead of a left join, and then just tabulate the cell lines:
+
+```{r final-razi-number}
+cellLineTable <- inner_join(allSRAFilt, kasperComplete, join_by("BioSample" == "BioSample")) %>% distinct(BioSample, .keep_all=T) %>% drop_na(Cell_line) %>% count(Cell_line, sort=T) 
+
+head(cellLineTable, n=10)
+cellLineTable %>% summarise(sum(n))
+```

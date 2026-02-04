@@ -5,6 +5,7 @@ tags: "diversity"
 output: html_document
 editor_options: 
   chunk_output_type: console
+date: "`r Sys.Date()`"
 ---
 
 This started out as an analysis script, but there was still some ambiguity left in how the population descriptors were coded, so we're going to revisit it! Yay :(
@@ -21,7 +22,7 @@ library(tidyverse)
 library(viridis)
 options(device = "quartz")
 
-allSRAFinal <- readRDS("allSRAFinalTissuesCentersDisease.rds")
+allSRAFinal <- readRDS("20250517_allSRAAncestryTissuesDiseaseCenters.rds")
 ```
 
 Let's look at the data using the previous population descriptors and country terms.
@@ -89,7 +90,7 @@ ggplot(raceClean, aes(fill = finalCountry, x = finalRace)) +
 
 ```
 
-## 2.5: Resolving ambiguity in the population descriptors:
+## 2: Resolving ambiguity in the population descriptors:
 
 So... after looking at this, it's clear there's still some noise in the descriptor classifications, primarily with who we are labeling as 'white' vs European... It's worth looking at some of these studies more closely. For instance, we know Singapore and Brazil both use the term 'white' but it's very unlikely to be referring to US census categories, and instead reflects their own legal recognition. 
 
@@ -98,7 +99,7 @@ First, it's worth remembering how the labels are made:
 
 There are a couple of options here:
 
-1. **Be very strict**: if the column says race, then it's a race, if the column says ethnicity, then I don't care what your term is, it's a geographic origin. This will overcorrect, but should perhaps have been our starting position, to see how things improve with other choices. It should also resolve the problem of studies being split across descriptor categories.
+1. **Be very strict**: if the column says race, then it's a race, if the column says ethnicity, then I don't care what your term is, it's a geographic origin. This will over-correct, but should perhaps have been our starting position, to see how things improve with other choices. It should also resolve the problem of studies being split across descriptor categories.
 2. **Be somewhat strict**: We had previously decided that certain terms (Caucasian, white, African, black) were racial no matter the column label, which is perhaps a problem, so here I have left some terms that are not ambiguous but are clearly in the wrong column unchanged (eg African American or Native Hawaiian is racial, but black is not because it is used outside the USA without reference to the USA context). This will bungle some stuff and I suspect the moving of caucasian and white and black terms will make things way worse when we consider descriptor use within a study. 
 3. **Manual review** Leave things as they were with the original reclassification that we used, which does make some assumptions - caucasian is always racial, and white gets moved around a bit. 
 
@@ -108,10 +109,10 @@ Let's go in order:
 
 This method is worth exploring, to see how things look if we are strict (worth reporting in a supplement). All of the code used here and below is borrowed from `02_clean_ancestry_terms.Rmd` but without most of the intermediate qc because this is meant to be brutal and automatic.
 
-This is coded as `IGR.term.strictest`
+This is coded as `IGR.term.strictest` in the schema, and as strictestRace/Geography in the file.
 
 ```{r strictest-terms}
-popDescriptors <- read.csv("20240702_descriptor_terms_new_schema.csv")
+popDescriptors <- read.csv("20250518_descriptor_terms_new_schema.csv")
 
 allSRAFinal$mergedGeography <- coalesce(allSRAFinal$ancestry, allSRAFinal$Population) %>%
   coalesce(., allSRAFinal$ETHNICITY) 
@@ -129,17 +130,18 @@ allSRAFinal$strictestGeography <- popGeoNew[match(allSRAFinal$mergedGeography, p
 allSRAFinal$strictestRace <- popRaceNew[match(allSRAFinal$mergedRace, popRaceNew$Term),]$IGR.term.strictest
 
 # At this point I originally did a lot of swapping of terms back and forth, but I believe in the strictest case we shouldn't do too much of that, just make sure there's nothing with a double assignment:
-# table(allSRAFinal$strictestGeography)
-# table(allSRAFinal$strictestRace)
-# 
-# table(!is.na(allSRAFinal$strictestGeography), !is.na(allSRAFinal$mergedGeography))
-# table(!is.na(allSRAFinal$strictestRace), !is.na(allSRAFinal$mergedRace))
+table(allSRAFinal$strictestGeography)
+table(allSRAFinal$strictestRace)
+ 
+table(!is.na(allSRAFinal$strictestGeography), !is.na(allSRAFinal$mergedGeography))
+table(!is.na(allSRAFinal$strictestRace), !is.na(allSRAFinal$mergedRace))
 
 # We can quickly check what becomes what, with v2 being the original and v1 being the new one:
-geographyTerms <- as.data.frame(table(allSRAFinal$strictestGeography, allSRAFinal$mergedGeography)) %>% .[.$Freq > 0,]
-raceTerms <- as.data.frame(table(allSRAFinal$strictestRace, allSRAFinal$mergedRace)) %>% .[.$Freq > 0,]
-# geographyTerms
-# raceTerms
+geographyTerms <- allSRAFinal %>% count(strictestGeography, mergedGeography)
+raceTerms <- allSRAFinal %>% count(strictestRace, mergedRace) 
+
+geographyTerms
+raceTerms
 
 # There's a few studies with joint assignments...
 table(!is.na(allSRAFinal$strictestGeography), !is.na(allSRAFinal$strictestRace)) 
@@ -165,7 +167,7 @@ allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestR
 allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(hispanic)
 ```
 
-### Option 2: THe original category label trumps most things
+### Option 2: The original category label trumps most things
 
 Only if it *really* matches the US Census term in the geography columns, or if it really doesn't match the census terms in the race columns, are things switched over.
 
@@ -600,9 +602,5 @@ allSRAFinal %>% count(hispanic, strictestRace)
 
 # Not sure if this is due to how we coded it, but that's pleasant. Except, what to do with the people with two labels??
 
- saveRDS(allSRAFinal, file="20240901_allSRAFinal.rds")
-
-
+saveRDS(allSRAFinal, file="20250517_allSRAFinal.rds")
 ```
-
-
