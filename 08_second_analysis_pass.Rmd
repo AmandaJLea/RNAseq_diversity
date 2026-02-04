@@ -28,13 +28,26 @@ library(thematic)
 library(scales)
 
 options(device = "quartz")
-
-allSRAFinal <- readRDS("20250517_allSRAFinalRazi.rds")
 ```
 
 After discussion with Amanda, we'll be using the strictestRace/Geography assignments, see `06_revisiting_population_terms` for more context on what this means.
 
 ```{r plotting-prep-1}
+# Read in, and tabulate sample origin:
+allSRAFinal <- readRDS("20250517_allSRAFinalRazi.rds")
+sourceRepo <- allSRAFinal %>% mutate(
+  repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+sourceRepo
+
+sum(sourceRepo$n) # This is still not the right subset...
+
+# The original numbers were:
+sourceRaw <- data.frame(repo = c("DRA", "ENA", "SRA"), n = c(10384, 68190, 716497))
+sourceRepo$n/sourceRaw$n
+
+studyRaw <- data.frame(repo = c("DRA", "ENA", "SRA"), n = c(195, 1230, 19784))
+
 # First we clean up the plotting labels:
 allSRAFinal <- allSRAFinal %>% 
     mutate(strictestRace = gsub("or ", "or\n", strictestRace)) %>%
@@ -212,6 +225,23 @@ allSRAFinal <- allSRAFinal %>% filter(!is.na(allSRAFinal$strictestGeography) | !
 
 nrow(allSRAFinal[!is.na(allSRAFinal$strictestGeography) | !is.na(allSRAFinal$strictestRace),])
 dim(allSRAFinal)
+
+# One final tally
+sourceFinal <- allSRAFinal %>% mutate(
+  repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+sourceFinal
+
+sum(sourceFinal$n) # At last!
+
+studyFinal <- allSRAFinal %>% distinct(SRA.Study, .keep_all=T) %>% 
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+studyFinal
+
+sourceFinal$n/sourceRaw$n
+studyFinal$n/studyRaw$n
 ```
 
 All samples accounted for now, at last! 
@@ -346,6 +376,7 @@ ggplot(., aes(x = fct_inorder(finalCountry), y=value, fill = strictestRace)) +
 geoByCountry + raceByCountry +
     plot_layout(design = long2Design)
 ggsave("fig2_by_country.pdf")
+ggsave("fig2_by_country.png")
 
 geoByRegion <- allSRAFinal %>% drop_na(worldRegion, strictestGeography) %>% count(worldRegion, strictestGeography) %>% melt() %>% arrange(worldRegion) %>% 
 ggplot(., aes(x = fct_rev(fct_infreq(worldRegion)), y=value, fill = strictestGeography)) +

@@ -43,9 +43,6 @@ allSRAFilt <- readRDS("20250605_allSRAFilt_country.rds")
 # So now we finally clean up to one row per biosample...
 allSRAClean <- allSRAFilt %>% distinct(BioSample, .keep_all=TRUE)
 dim(allSRAClean)
-
-# A bit of tidying up to free up some memory etc...
-rm(allSRA, allSRAFilt, allSRAcounts)
 ```
 
 And now we read in Kasper's file, my SRA dump and merge, sanity checking the missingness in the data because otherwise it's all quite yikes:

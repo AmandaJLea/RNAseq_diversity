@@ -10,7 +10,7 @@
 
 
 
-<meta name="date" content="2025-06-06" />
+<meta name="date" content="2026-02-04" />
 
 <title>Population descriptor clean up and assignments</title>
 
@@ -351,7 +351,7 @@ display: none;
 
 <h1 class="title toc-ignore">Population descriptor clean up and
 assignments</h1>
-<h4 class="date">2025-06-06</h4>
+<h4 class="date">2026-02-04</h4>
 
 </div>
 
@@ -366,22 +366,14 @@ commentary here.</p>
 duplicated BioSamples and all files without any sort of population
 descriptor associated with it:</p>
 <pre class="r"><code>old &lt;- fread(&quot;SRA_metadata/20240613_run_selector_metadata.txt&quot;, na.strings=c(&quot;&quot;,&quot; &quot;,&quot;NA&quot;), sep=&quot;\t&quot;)</code></pre>
-<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata.txt&quot;, na.strings
-## = c(&quot;&quot;, : na.strings[2]==&quot; &quot; consists only of whitespace, ignoring.
-## strip.white==TRUE (default) and &quot;&quot; is present in na.strings, so any number of
-## spaces in string columns will already be read as &lt;NA&gt;.</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata.txt&quot;, na.strings = c(&quot;&quot;, : na.strings[2]==&quot; &quot; consists only of whitespace, ignoring. strip.white==TRUE (default) and
+## &quot;&quot; is present in na.strings, so any number of spaces in string columns will already be read as &lt;NA&gt;.</code></pre>
 <pre class="r"><code>new &lt;- fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, na.strings=c(&quot;&quot;,&quot; &quot;,&quot;NA&quot;))</code></pre>
-<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, :
-## na.strings[2]==&quot; &quot; consists only of whitespace, ignoring. strip.white==TRUE
-## (default) and &quot;&quot; is present in na.strings, so any number of spaces in string
-## columns will already be read as &lt;NA&gt;.</code></pre>
-<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, :
-## Found and resolved improper quoting out-of-sample. First healed line 607994:
-## &lt;&lt;SRP218982 GEO SAMN12614816 Homo sapiens TRANSCRIPTOMIC &quot;classical&quot; (CL)
-## CD14++CD16- monocytes blood NA NA NA NA NA NA NA 2021-11-21T00:00:00Z
-## 2019-08-21T11:32:00Z NA NA NA NA Blood NA NA NA NA NA &gt;&gt;. If the fields are not
-## quoted (e.g. field separator does not appear within any field), try quote=&quot;&quot; to
-## avoid this warning.</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, : na.strings[2]==&quot; &quot; consists only of whitespace, ignoring. strip.white==TRUE (default) and &quot;&quot; is
+## present in na.strings, so any number of spaces in string columns will already be read as &lt;NA&gt;.</code></pre>
+<pre><code>## Warning in fread(&quot;SRA_metadata/20240613_run_selector_metadata_post2019.txt&quot;, : Found and resolved improper quoting out-of-sample. First healed line 607994: &lt;&lt;SRP218982 GEO
+## SAMN12614816 Homo sapiens TRANSCRIPTOMIC &quot;classical&quot; (CL) CD14++CD16- monocytes blood NA NA NA NA NA NA NA 2021-11-21T00:00:00Z 2019-08-21T11:32:00Z NA NA NA NA Blood NA NA NA NA
+## NA &gt;&gt;. If the fields are not quoted (e.g. field separator does not appear within any field), try quote=&quot;&quot; to avoid this warning.</code></pre>
 <pre class="r"><code>names(new)[8] &lt;- &quot;Cell_line&quot;
 
 allSRA &lt;- rbind.fill(old, new)
@@ -405,6 +397,25 @@ length(unique(allSRA$SRA.Study))</code></pre>
 <pre><code>## [1] 795071</code></pre>
 <pre class="r"><code>nrow(allSRA)</code></pre>
 <pre><code>## [1] 1121955</code></pre>
+<pre class="r"><code>sourceAll &lt;- allSRA %&gt;% distinct(BioSample, .keep_all =T) %&gt;%
+  mutate(
+    repo = ifelse(grepl(&quot;^SR&quot;, SRA.Study), &quot;SRA&quot;, ifelse(grepl(&quot;^ER&quot;, SRA.Study), &quot;ENA&quot;, &quot;DRA&quot;))) %&gt;%
+  count(repo)
+sourceAll</code></pre>
+<pre><code>##   repo      n
+## 1  DRA  10384
+## 2  ENA  68190
+## 3  SRA 716497</code></pre>
+<pre class="r"><code># And at the study level? Because that&#39;s how the decision gets made:
+studyAll &lt;- allSRA %&gt;% distinct(SRA.Study, .keep_all =T) %&gt;%
+  mutate(
+    repo = ifelse(grepl(&quot;^SR&quot;, SRA.Study), &quot;SRA&quot;, ifelse(grepl(&quot;^ER&quot;, SRA.Study), &quot;ENA&quot;, &quot;DRA&quot;))) %&gt;%
+  count(repo)
+studyAll</code></pre>
+<pre><code>##   repo     n
+## 1  DRA   195
+## 2  ENA  1230
+## 3  SRA 19784</code></pre>
 <pre class="r"><code># And after filtering for 10 BioSamples or more
 length(unique(allSRAFilt$SRA.Study))</code></pre>
 <pre><code>## [1] 12293</code></pre>
@@ -412,6 +423,15 @@ length(unique(allSRAFilt$SRA.Study))</code></pre>
 <pre><code>## [1] 747964</code></pre>
 <pre class="r"><code>nrow(allSRAFilt)</code></pre>
 <pre><code>## [1] 1028005</code></pre>
+<pre class="r"><code>source10 &lt;- allSRAFilt %&gt;% distinct(BioSample, .keep_all =T) %&gt;%
+  mutate(
+    repo = ifelse(grepl(&quot;^SR&quot;, SRA.Study), &quot;SRA&quot;, ifelse(grepl(&quot;^ER&quot;, SRA.Study), &quot;ENA&quot;, &quot;DRA&quot;))) %&gt;%
+  count(repo)
+source10</code></pre>
+<pre><code>##   repo      n
+## 1  DRA   9884
+## 2  ENA  66123
+## 3  SRA 671957</code></pre>
 <pre class="r"><code>allSRAFilt &lt;- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
 
 # And now after cleaning for pop descriptors:
@@ -421,6 +441,30 @@ length(unique(allSRAFilt$SRA.Study))</code></pre>
 <pre><code>## [1] 27207</code></pre>
 <pre class="r"><code>nrow(allSRAFilt)</code></pre>
 <pre><code>## [1] 39905</code></pre>
+<pre class="r"><code>sourcePop &lt;- allSRAFilt %&gt;% distinct(BioSample, .keep_all =T) %&gt;%
+  mutate(
+    repo = ifelse(grepl(&quot;^SR&quot;, SRA.Study), &quot;SRA&quot;, ifelse(grepl(&quot;^ER&quot;, SRA.Study), &quot;ENA&quot;, &quot;DRA&quot;))) %&gt;%
+  count(repo)
+sourcePop</code></pre>
+<pre><code>##   repo     n
+## 1  DRA   109
+## 2  ENA  1862
+## 3  SRA 25236</code></pre>
+<pre class="r"><code>studyPop &lt;- allSRAFilt %&gt;% distinct(SRA.Study, .keep_all =T) %&gt;%
+  mutate(
+    repo = ifelse(grepl(&quot;^SR&quot;, SRA.Study), &quot;SRA&quot;, ifelse(grepl(&quot;^ER&quot;, SRA.Study), &quot;ENA&quot;, &quot;DRA&quot;))) %&gt;%
+  count(repo)
+studyPop</code></pre>
+<pre><code>##   repo   n
+## 1  DRA   3
+## 2  ENA  12
+## 3  SRA 286</code></pre>
+<pre class="r"><code>sourcePop$n/source10$n</code></pre>
+<pre><code>## [1] 0.01102792 0.02815964 0.03755597</code></pre>
+<pre class="r"><code>sourcePop$n/sourceAll$n</code></pre>
+<pre><code>## [1] 0.01049692 0.02730606 0.03522136</code></pre>
+<pre class="r"><code>studyPop$n/studyAll$n</code></pre>
+<pre><code>## [1] 0.015384615 0.009756098 0.014456126</code></pre>
 <div id="are-there-any-repeated-biosamples-in-here" class="section level4">
 <h4>Are there any repeated BioSamples in here?</h4>
 <pre class="r"><code>length(unique(allSRAFilt$BioSample))</code></pre>

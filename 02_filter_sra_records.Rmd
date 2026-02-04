@@ -47,11 +47,28 @@ dim(allSRAFilt) # Most of them stick around...
 length(unique(allSRA$SRA.Study))
 length(unique(allSRA$BioSample))
 nrow(allSRA)
+sourceAll <- allSRA %>% distinct(BioSample, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+sourceAll
+
+# And at the study level? Because that's how the decision gets made:
+studyAll <- allSRA %>% distinct(SRA.Study, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+studyAll
 
 # And after filtering for 10 BioSamples or more
 length(unique(allSRAFilt$SRA.Study))
 length(unique(allSRAFilt$BioSample))
 nrow(allSRAFilt)
+source10 <- allSRAFilt %>% distinct(BioSample, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+source10
 
 allSRAFilt <- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
 
@@ -59,6 +76,23 @@ allSRAFilt <- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) 
 length(unique(allSRAFilt$SRA.Study))
 length(unique(allSRAFilt$BioSample))
 nrow(allSRAFilt)
+sourcePop <- allSRAFilt %>% distinct(BioSample, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+sourcePop
+
+studyPop <- allSRAFilt %>% distinct(SRA.Study, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+studyPop
+
+sourcePop$n/source10$n
+sourcePop$n/sourceAll$n
+
+studyPop$n/studyAll$n
+
 ```
 
 #### Are there any repeated BioSamples in here?

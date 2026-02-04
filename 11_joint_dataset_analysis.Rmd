@@ -69,8 +69,16 @@ scale_fill_dbGap <- function(...){
 These are basically ours, but smaller - we gotta reorder his factor levels so they match well. Both final and clean have been merged with his, so we gotta create factor levels for both.
 
 ```{r razi-et-al-colors}
-allSRAFinal$pred_pop <- factor(allSRAFinal$pred_pop, levels = c("AFR", "EUR", "SAS", "EAS", "AMR", "")) 
-allSRAClean$pred_pop <- factor(allSRAClean$pred_pop, levels = c("AFR", "EUR", "SAS", "EAS", "AMR", "")) 
+allSRAFinal <- allSRAFinal %>% 
+  mutate(pred_pop = paste0("1KG-", pred_pop, "-like")) %>%
+  mutate(pred_pop = gsub("1KG-NA-like", "", pred_pop))
+
+allSRAClean <- allSRAClean %>% 
+  mutate(pred_pop = paste0("1KG-", pred_pop, "-like")) %>%
+  mutate(pred_pop = gsub("1KG-NA-like", "", pred_pop))
+
+allSRAFinal$pred_pop <- factor(allSRAFinal$pred_pop, levels = c("1KG-AFR-like", "1KG-EUR-like", "1KG-SAS-like", "1KG-EAS-like", "1KG-AMR-like", "")) 
+allSRAClean$pred_pop <- factor(allSRAClean$pred_pop, levels = c("1KG-AFR-like", "1KG-EUR-like", "1KG-SAS-like", "1KG-EAS-like", "1KG-AMR-like", "")) 
 
 martinColors <- c('#9C8DC3', '#DB6968', '#60BC55', '#4D97CD', '#F8984E')
 kasperColors <- darken(martinColors, 0.25)
@@ -284,6 +292,9 @@ A - Yes correct (and yes seems like a good place to add more about the Center Na
 ```{r plot-clean-country, out.width="100%", echo=F}
 sraCountry <- allSRAClean %>% drop_na(finalCountry) %>% count(finalCountry, worldRegion, worldBank) %>% melt() %>% arrange(worldRegion) %>% mutate(db = "SRA")
 
+sraCountry %>% group_by(worldRegion) %>%
+  summarise(value = sum(value))
+
 dbGapCountry <- dbGapFinal %>% drop_na(finalCountry) %>% group_by(finalCountry, worldRegion, worldBank) %>% summarise(value = sum(value)) %>% mutate(db = "dbGaP") %>% as.data.frame()
 
 # This one is needed for the supplement, but not for the main figure, so we gotta split allCountry into 2
@@ -436,7 +447,7 @@ table(tmp$income_grp) # Note that this is older than world bank data and doesn't
 ggplot(data=toplot2) +
   geom_sf(aes(fill=log10(samples)), color='grey', size=0.1) +
   coord_sf(crs = "+proj=eqearth +wktext") +
-  scale_fill_viridis(option="rocket", na.value = "grey50") +
+  scale_fill_viridis(option="rocket", na.value = "grey50", direction=-1) +
   theme(panel.grid.major = element_line(linewidth = 0.25, linetype = 'solid', color = "grey"),
         panel.border = element_blank(),
         axis.text.x=element_blank(),
@@ -487,6 +498,14 @@ allSRAClean %>% drop_na(pred_pop) %>% filter(missingness %in% c("(0,10]", "(10,2
 
 allSRAClean %>% drop_na(pred_pop) %>% summarise(studies = n_distinct(SRA.Study), samples = n_distinct(BioSample))
 ```
+
+Since we're here, we'll add a couple of analyses looking at the USA submitted samples in general vs non-USA submitted samples... but the question is, which? And do we use Jaro-Winklar 0 or 0.05?
+
+```{r usa-only-analyses}
+
+
+```
+
 
 And one final check... the agreement in country assignment between our two methods. 
 
