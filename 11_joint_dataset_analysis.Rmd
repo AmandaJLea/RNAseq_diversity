@@ -464,7 +464,6 @@ ggplot(., aes(x = excess, y=finalCountry, color=db)) +
 ggsave("db_overrepresentation.pdf", width = 3, height = 8)
 ggsave("db_overrepresentation.png", width = 3, height = 8)
 
-
 # And after this we move exclusively to a Jaro-Winklar distance of 0.0 for all plots, so we gotta just a filtering step to basically everything
 
 # We remake the plot 
@@ -630,6 +629,56 @@ compareCountries %>% drop_na(strictCountry) %>%
   filter(finalCountry != strictCountry)
 
 ```
+
+Bearing this in mind we actually want to compare country of deposition of all studies vs country of deposition of studies with metadata. This is inherently noisy (118:27 above) but what can you do?
+
+```{r final-vs-clean}
+
+allSamplesClean <- allSRAClean %>% drop_na(strictCountry) %>% count(finalCountry)
+allSamplesFinal <- allSRAFinal %>% count(finalCountry)
+
+sampleRep <- left_join(allSamplesClean, allSamplesFinal, by = c("finalCountry"))
+sampleRep <- sampleRep %>% mutate(
+  n.y = ifelse(is.na(n.y), 0, n.y),
+  frac = n.y/n.x)
+
+ggplot(sampleRep, aes(y = finalCountry, x = frac)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Fraction of deposited samples with population descriptor metadata") +
+  xlab("") +
+  ylab("Depositing country") +
+  # scale_fill_wber() +
+  # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
+
+ggsave("samples_with_metadata.pdf", width=3, height=5)
+ggsave("samples_with_metadata.png", width=3, height=5)
+
+allStudiesClean <- allSRAClean %>% drop_na(strictCountry) %>% distinct(SRA.Study, .keep_all=T) %>% count(finalCountry)  %>% mutate(finalCountry = gsub("United States", "USA", finalCountry))
+allStudiesFinal <- allSRAFinal %>% distinct(SRA.Study, .keep_all=T) %>% count(finalCountry)
+studyRep <- left_join(allStudiesClean, allStudiesFinal, by = c("finalCountry"))
+
+# setdiff(unique(allStudiesFinal$finalCountry), unique(allStudiesClean$finalCountry)) 
+
+studyRep <- studyRep %>% mutate(
+  n.y = ifelse(is.na(n.y), 0, n.y),
+  frac = n.y/n.x)
+
+ggplot(studyRep, aes(y = finalCountry, x = frac)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Fraction of deposited studies with population descriptor metadata") +
+  xlab("") +
+  ylab("Depositing country") +
+  # scale_fill_wber() +
+  # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
+
+ggsave("studies_with_metadata.pdf", width=3, height=5)
+ggsave("studies_with_metadata.png", width=3, height=5)
+
+```
+
+
 
 
 ## Figure 2: Sample breakdown by descriptor
@@ -1111,4 +1160,11 @@ litRevFinal %>% filter(recount3 %in% common)
 
 intersect(unique(allSRAClean$SRA.Study), unique(litRevFinal$recount3))
 setdiff(unique(litRevFinal$recount3), unique(allSRAClean$SRA.Study))
+```
+
+
+Second, how many times did the country agree/disagree between SRAClean and the manual?
+
+```{r manual-vs-sra-2}
+
 ```
