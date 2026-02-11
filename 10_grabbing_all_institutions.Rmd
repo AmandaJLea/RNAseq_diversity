@@ -8,9 +8,9 @@ editor_options:
 ---
 
 ```{r setup, include=F}
-knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+knitr::opts_knit$set(root.dir="~/Library/CloudStorage/OneDrive-St.Vincent'sInstitute/Documents/RNA Diversity", echo=T)
 # But we also have to do this manually because R studio is stupid: 
-# setwd(knitr::opts_knit$get("root.dir"))
+setwd(knitr::opts_knit$get("root.dir"))
 library(data.table)
 library(plyr)
 library(reshape)
@@ -24,7 +24,9 @@ options(device = "quartz")
 
 Let's try to use ROR to grab country identifiers for all institutions that we can then include in the map. This beats my manual approach from a while ago by, like, a lot... save that it is noisier with the edge cases, because I can resolve them manually and it will not. 
 
-We're going to use the [ROR](https://ror.org/) data dump for this. I grabbed version v1.65-2025-05-05-ror-data from Zenodo on 14.05.2025.
+We're going to use the [ROR](https://ror.org/) data dump for this. I initially grabbed version v1.65-2025-05-05-ror-data from Zenodo on 14.05.2025.
+
+Update: In Feb 2026 I switched to the current release, v2.2-2026-01-29-ror-data, which contains about 5k more institutions than the previous one. 
 
 ```{r read-big-dataset, eval=T}
 allSRAFilt <- readRDS("20250518_allSRACleanRazi_left_join_all_samples.rds")
@@ -145,8 +147,9 @@ dim(institutions)
 
 Now we start working with the ROR data, which will be new and exciting... 
 
-```{r read-and-parse-ror, eval=F}
-rorData <- read.csv("ROR_data/v1.65-2025-05-05-ror-data_schema_v2.csv", stringsAsFactors = F)
+```{r read-and-parse-ror, eval=T}
+# rorDataOld <- read.csv("ROR_data/v1.65-2025-05-05-ror-data_schema_v2.csv", stringsAsFactors = F)
+rorData <- read.csv("ROR_data/v2.2-2026-01-29-ror-data.csv", stringsAsFactors = F)
 
 # Extract useful fields: name, aliases, acronyms, country
 rorClean <- data.frame(
@@ -222,7 +225,7 @@ nrow(allMatchedNames)
 
 allMatchedNames %>% distinct(name, lastName_name, country_name, country_lastName, .keep_all = T) %>% head(n = 20)
 
-write.table(allMatchedNames, file="20250603_institution_country_matches.tsv", quote=F, row.names=F, sep="\t")
+write.table(allMatchedNames, file="20260209_institution_country_matches.tsv", quote=F, row.names=F, sep="\t")
 ```
 
 Now let's take a look at the output and see if we can make any sense of it... There are a lot of of dumpster fires but many are easy to fix, though how do I justify bothering? How reliable is this overall?
@@ -230,7 +233,7 @@ Now let's take a look at the output and see if we can make any sense of it... Th
 I first defined allMatchedNamesClean as being <= 0.1, but that was still extremely noisy, so I am now sticking with 0.05.
 
 ```{r explore-name-matches-1, eval=T}
-allMatchedNames <- read.table("20250603_institution_country_matches.tsv", header=T, quote="", sep="\t")
+allMatchedNames <- read.table("20260209_institution_country_matches.tsv", header=T, quote="", sep="\t", comment.char = "")
 
 # The internet won't tell me what's a 'good' match so let's just eyeball some different subsets
 allMatchedNames %>% filter(distance_name > 0) %>% arrange(distance_name) %>% head(n = 50)
@@ -264,7 +267,7 @@ table(allMatchedNamesClean$better)
 allMatchedNamesClean$countryMatch <- allMatchedNamesClean$country_lastName ==  allMatchedNamesClean$country_name
 table(allMatchedNamesClean$countryMatch) # YIKES
 
-write.table(allMatchedNamesClean, file="20250603_institution_country_matches_0.05.tsv", quote=F, row.names=F, sep="\t")
+write.table(allMatchedNamesClean, file="20260209_institution_country_matches_0.05.tsv", quote=F, row.names=F, sep="\t")
 ```
 
 There's some pretty outrageous mistakes that would require manual clean up, and some really perplexing ones, eg university of maryland going to university of malakand (tho if you look at the raw data there isn't a single sensible entry for maryland...). Garvan also failing very hard. I think we have to apply a clear cutoff of some sort and just be like, well, that sucks, but that's the overall issue with the metadata too. 
@@ -335,7 +338,7 @@ There's still the problem of deciding what to do with institutions that are pres
 ```{r merge-back-to-allSRA}
 # And now we update. The filtering means these are in complete disarray, so we need to clean up a bit first... Institutions was parsed a tiny bit, so we create a similar vector in allSRA and attempt to match by that, starting from finalSite, which has dealt with the GEO mess
 
-# allSRAFilt <- read.rds(file="20260209_allSRAFilt_Razi_left_institution_intermediate.rds")
+# allSRAFilt <- readRDS(file="20260209_allSRAFilt_Razi_left_institution_intermediate.rds")
 
 allSRAFilt <- allSRAFilt %>%
   mutate(tempInst = gsub("^the ", "", tolower(finalSite))) 
@@ -352,12 +355,18 @@ strictName <- allMatchedNamesCleanest %>% filter(better == "name")
 strictLast %>% group_by(match_name_lastName) %>% summarise(countries = n_distinct(country_lastName)) %>% summarise(mean(countries), max(countries)) 
 strictName %>% group_by(match_name_name) %>% summarise(countries = n_distinct(country_name))%>% summarise(mean(countries), max(countries)) 
 
-# Stats for sanity checking:
+# Matches with only one country
 singleLast <- betterLast %>% group_by(match_name_lastName) %>% summarise(countries = n_distinct(country_lastName)) %>% filter(countries == 1)
 singleName <- betterName %>% group_by(match_name_name) %>% summarise(countries = n_distinct(country_name)) %>% filter(countries == 1)
 
+singleLastStrict <- strictLast %>% group_by(match_name_lastName) %>% summarise(countries = n_distinct(country_lastName)) %>% filter(countries == 1)
+singleNameStrict <- strictName %>% group_by(match_name_name) %>% summarise(countries = n_distinct(country_name)) %>% filter(countries == 1)
+
 betterLast <- betterLast[betterLast$match_name_lastName %in% singleLast$match_name_lastName,]
 betterName <- betterName[betterName$match_name_name %in% singleName$match_name_name,]
+
+strictLast <- strictLast[strictLast$match_name_lastName %in% singleLastStrict$match_name_lastName,]
+strictName <- strictName[strictName$match_name_name %in% singleNameStrict$match_name_name,]
 
 # And now the scary merge
 allSRAFilt$lastCountry <- NA
@@ -389,21 +398,53 @@ table(allSRAFilt$lastCountryStrict)
 table(allSRAFilt$nameCountryStrict)
 
 table(is.na(allSRAFilt$lastCountry), is.na(allSRAFilt$nameCountry)) # How many double assignments...None! What a shock!
-table(is.na(allSRAFilt$lastCountryStrict), is.na(allSRAFilt$nameCountryStrict)) # How many double 
+table(is.na(allSRAFilt$lastCountryStrict), is.na(allSRAFilt$nameCountryStrict)) # And with this one?
 
 allSRAFilt$finalCountry <- coalesce(allSRAFilt$nameCountry, allSRAFilt$lastCountry)
-allSRAFilt %>% count(finalCountry, sort=T) %>% head(n=20) # Venezuela what?
-
 allSRAFilt$strictCountry <- coalesce(allSRAFilt$nameCountryStrict, allSRAFilt$lastCountryStrict)
+
+table(allSRAFilt$finalCountry == allSRAFilt$strictCountry) # Not sure why this doesn't pick the NAs...
+
+allSRAFilt %>% filter(finalCountry != strictCountry) %>% head() # Makes sense that all of these align perfectly, because after all strictCountry is a subset of finalCountry... 
+# allSRAFilt %>% filter(is.na(strictCountry) & !is.na(finalCountry)) %>% head(n = 50)
+allSRAFilt %>% filter(is.na(strictCountry) & !is.na(finalCountry)) %>% nrow() # We lose about 30,000 assignments
+
+strictCounts <- allSRAFilt %>% count(strictCountry)
+finalCounts <- allSRAFilt %>% count(finalCountry)
+allCountries <- full_join(finalCounts, strictCounts, by = c("finalCountry" = "strictCountry"))
+names(allCountries) <- c("Country", "nFinal", "nStrict")
+allCountries <- allCountries %>%
+  mutate(nStrict = ifelse(is.na(nStrict), 0, nStrict),
+         diff = nFinal - nStrict,
+         fractDiff = diff/nFinal)
+
+allCountries %>% arrange(desc(diff)) %>% head(n = 10)
+allCountries %>% arrange(desc(fractDiff)) %>% head(n = 20)
+
+# Quickly checking some of the countries with the biggest differences fractionally
+allSRAFilt %>% filter(finalCountry == "Algeria") # Clear OG fail
+allSRAFilt %>% filter(finalCountry == "Tunisia") # Looks like a fail
+allSRAFilt %>% filter(finalCountry == "Cuba" & is.na(strictCountry)) # Super wrong, should be Spain
+allSRAFilt %>% filter(finalCountry == "Kenya" & is.na(strictCountry)) # Super wrong, should be Turkey
+allSRAFilt %>% filter(finalCountry == "Ecuador" & is.na(strictCountry)) # Wrong
+allSRAFilt %>% filter(finalCountry == "Belarus" & is.na(strictCountry)) # All wrong... 
+
+# And countries with some assignments before and after?
+allSRAFilt %>% filter(finalCountry == "Portugal" & is.na(strictCountry)) # A very Portuguese institituion...
+allSRAFilt %>% filter(finalCountry == "Poland" & is.na(strictCountry)) # A Polish institution
+allSRAFilt %>% filter(finalCountry == "South Africa" & is.na(strictCountry)) # Correct assignment to SA
+allSRAFilt %>% filter(finalCountry == "Iran" & is.na(strictCountry)) # China??
+allSRAFilt %>% filter(finalCountry == "Luxembourg" & is.na(strictCountry)) # Should be kept...
+allSRAFilt %>% filter(finalCountry == "Czechia" & is.na(strictCountry)) # First few are Polish
+allSRAFilt %>% filter(finalCountry == "Australia" & is.na(strictCountry)) # Definitely Australian...
+
+# O.0 is very conservative, but I guess it does perform better... so let's do it.  
+
 head(allSRAFilt)
-allSRAFilt %>% count(finalCountry, sort=T) %>% head(n=20) # Venezuela what?
-allSRAFilt %>% count(strictCountry, sort=T) %>% head(n=20) # Venezuela what?
+allSRAFilt %>% count(finalCountry, sort=T) %>% head(n=20) 
+allSRAFilt %>% count(strictCountry, sort=T) %>% head(n=20) 
 
-allSRAFilt[allSRAFilt$finalCountry %in% "Venezuela",] %>% head(n = 1000) %>% tail(n=20) #It's all down to UCLA...
-
-head(allSRAFilt[is.na(allSRAFilt$finalCountry),], n = 10000) %>% tail(n = 20)
-
-allSRAFilt <- allSRAFilt %>% select(-lastCountry, -nameCountry, -tempInst)
+allSRAFilt <- allSRAFilt %>% select(-lastCountry, -nameCountry, -lastCountryStrict, -nameCountryStrict, -tempInst)
 
 saveRDS(allSRAFilt, file="20260209_allSRAFilt_Razi_left_country.rds")
 ```
