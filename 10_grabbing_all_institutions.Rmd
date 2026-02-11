@@ -422,23 +422,29 @@ allCountries %>% arrange(desc(diff)) %>% head(n = 10)
 allCountries %>% arrange(desc(fractDiff)) %>% head(n = 20)
 
 # Quickly checking some of the countries with the biggest differences fractionally
-allSRAFilt %>% filter(finalCountry == "Algeria") # Clear OG fail
-allSRAFilt %>% filter(finalCountry == "Tunisia") # Looks like a fail
-allSRAFilt %>% filter(finalCountry == "Cuba" & is.na(strictCountry)) # Super wrong, should be Spain
-allSRAFilt %>% filter(finalCountry == "Kenya" & is.na(strictCountry)) # Super wrong, should be Turkey
-allSRAFilt %>% filter(finalCountry == "Ecuador" & is.na(strictCountry)) # Wrong
-allSRAFilt %>% filter(finalCountry == "Belarus" & is.na(strictCountry)) # All wrong... 
+allSRAFilt %>% filter(finalCountry == "Algeria") %>% select(c(1,2,3,56:ncol(allSRAFilt))) # Clear OG fail
+allSRAFilt %>% filter(finalCountry == "Tunisia") %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # Looks like a fail
+allSRAFilt %>% filter(finalCountry == "Cuba" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # Super wrong, should be Spain
+allSRAFilt %>% filter(finalCountry == "Ecuador" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # Wrong
+allSRAFilt %>% filter(finalCountry == "Belarus" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # All wrong... 
 
 # And countries with some assignments before and after?
-allSRAFilt %>% filter(finalCountry == "Portugal" & is.na(strictCountry)) # A very Portuguese institituion...
-allSRAFilt %>% filter(finalCountry == "Poland" & is.na(strictCountry)) # A Polish institution
-allSRAFilt %>% filter(finalCountry == "South Africa" & is.na(strictCountry)) # Correct assignment to SA
-allSRAFilt %>% filter(finalCountry == "Iran" & is.na(strictCountry)) # China??
-allSRAFilt %>% filter(finalCountry == "Luxembourg" & is.na(strictCountry)) # Should be kept...
-allSRAFilt %>% filter(finalCountry == "Czechia" & is.na(strictCountry)) # First few are Polish
-allSRAFilt %>% filter(finalCountry == "Australia" & is.na(strictCountry)) # Definitely Australian...
+allSRAFilt %>% filter(finalCountry == "Portugal" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # Very Portuguese institutions
+allSRAFilt %>% filter(finalCountry == "Poland" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # A Polish institutions
+allSRAFilt %>% filter(finalCountry == "South Africa" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # Correct assignment to SA
+allSRAFilt %>% filter(finalCountry == "Iran" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # China??
+allSRAFilt %>% filter(finalCountry == "Luxembourg" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # Should be kept...
+allSRAFilt %>% filter(finalCountry == "Czechia" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # First few are Polish, but many are in Czechia
+allSRAFilt %>% filter(finalCountry == "Australia" & is.na(strictCountry)) %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # Definitely Australian...
 
-# O.0 is very conservative, but I guess it does perform better... so let's do it.  
+
+allSRAFilt %>% filter(strictCountry == "Türkiye") %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # 
+allSRAFilt %>% filter(strictCountry == "Iran") %>% select(c(1,2,3,56:ncol(allSRAFilt))) # # 
+allSRAFilt %>% filter(strictCountry == "Portugal") %>% select(c(1,2,3,56:ncol(allSRAFilt))) # The assigments to IT are incorrect, but all the other ones are fine
+allSRAFilt %>% filter(strictCountry == "Poland") %>% select(c(1,2,3,56:ncol(allSRAFilt))) # Two different institutes of human genetics, one of which seems to be in Germany? Hard to tell, since there's a Polish one and SRA doesn't have much info on the submitters.They also lose a LOT of data compared to 0.05... but a lot of it was being miscoded as Czechia anyhow (all the PAS samples)
+
+# O.0 is very conservative, and penalises things like apostrophes or accents, I bet, which are more likely to be reported in ROR than in SRA. But...
+
 
 head(allSRAFilt)
 allSRAFilt %>% count(finalCountry, sort=T) %>% head(n=20) 

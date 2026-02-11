@@ -70,6 +70,12 @@ source10 <- allSRAFilt %>% distinct(BioSample, .keep_all =T) %>%
   count(repo)
 source10
 
+study10 <- allSRAFilt %>% distinct(SRA.Study, .keep_all =T) %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA"))) %>%
+  count(repo)
+study10
+
 allSRAFilt <- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
 
 # And now after cleaning for pop descriptors:

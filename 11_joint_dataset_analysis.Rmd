@@ -34,7 +34,7 @@ options(device = "quartz")
 options(scipen = 20)
 
 allSRAFinal <- readRDS("20250518_allSRAFinal_for_plotting.rds") # Samples with descriptors
-allSRAClean <- readRDS("20250621_allSRAFilt_Razi_left_country.rds") # All samples with inferred country info
+allSRAClean <- readRDS("20260209_allSRAFilt_Razi_left_country.rds") # All samples with inferred country info
 dbGapFinal <- readRDS("20240731_dbgap_final.rds") #dbGap, all from USA
 litRevFinal <- readRDS("20240916_manual_final.rds") # manual curation
 ```
@@ -280,6 +280,26 @@ allSRAClean %>% count(finalCountry, worldRegion)
 
 # And now we need to clean up some labels so we can plot them better. Good thing is, it's just an ampersand:
 allSRAClean$worldRegion <- gsub("& ", "&\n", allSRAClean$worldRegion)
+
+# We know that strictCountry is a subset of finalCountry, so we don't need to process these columns again, just update the strictCountry names so it maps when we're doing stuff:
+
+# First we need to update country names:
+allSRAClean <- allSRAClean %>% mutate(
+  strictCountry = gsub("^UK$", "United Kingdom", strictCountry),
+  strictCountry = gsub("^Korea$", "South Korea", strictCountry),
+  strictCountry = gsub("^The Netherlands$", "Netherlands", strictCountry),
+  strictCountry = gsub("Hong Kong|Macao", "China", strictCountry)
+  )
+
+# We know this but we confirm it:
+allSRAClean %>% drop_na(strictCountry) %>% filter(strictCountry != finalCountry) %>% nrow()
+
+allSRAClean %>% count(strictCountry, worldBank)
+allSRAClean %>% count(strictCountry, worldRegion)
+
+# Some stats for the paper:
+allSRAClean %>% drop_na(strictCountry) %>% nrow()
+allSRAClean %>% drop_na(strictCountry) %>% distinct(SRA.Study) %>% nrow()
 ```
 
 ## FIGURE 1 and associated numbers. Where is the sequencing happening, and what countries are being included?  
@@ -290,9 +310,15 @@ Figure 1: 1A and 1B with SRA and dbGap only, then 1C [map] (but see below for op
 A - Yes correct (and yes seems like a good place to add more about the Center Name analyses as appropriate). 1D could go to the supplement.
 
 ```{r plot-clean-country, out.width="100%", echo=F}
-sraCountry <- allSRAClean %>% drop_na(finalCountry) %>% count(finalCountry, worldRegion, worldBank) %>% melt() %>% arrange(worldRegion) %>% mutate(db = "SRA")
+sraCountry <- allSRAClean %>% drop_na(finalCountry) %>% count(finalCountry, worldRegion, worldBank) %>% melt() %>% arrange(worldRegion) %>% mutate(db = "SRA05")
 
 sraCountry %>% group_by(worldRegion) %>%
+  summarise(value = sum(value))
+
+# Since they are the same we can do this and make our life easier downstream
+sraCountryStrict <- allSRAClean %>% drop_na(strictCountry) %>% count(finalCountry, worldRegion, worldBank) %>% melt() %>% arrange(worldRegion) %>% mutate(db = "SRA")
+
+sraCountryStrict %>% group_by(worldRegion) %>%
   summarise(value = sum(value))
 
 dbGapCountry <- dbGapFinal %>% drop_na(finalCountry) %>% group_by(finalCountry, worldRegion, worldBank) %>% summarise(value = sum(value)) %>% mutate(db = "dbGaP") %>% as.data.frame()
@@ -303,19 +329,33 @@ names(litRevCountry)[1:3] <- c("finalCountry", "worldRegion", "worldBank")
 
 # But this is all very annoying because it makes the plots by country and we get a lot of weird artefacts in our plots. So let's do a bit more merging of data before we plot
 
-allCountryMain <- rbind.fill(sraCountry, dbGapCountry, litRevCountry)
+allCountryMain <- rbind.fill(sraCountry, sraCountryStrict, dbGapCountry, litRevCountry)
 allCountryMain <- allCountryMain %>%
   mutate(worldBank = gsub("middle ", "middle\n", worldBank)) %>% 
   mutate(worldBankSample = gsub("middle ", "middle\n", worldBankSample)) %>%
   mutate(hasDescriptor = if_else(grepl("dbGaP", db), "GrafPop", hasDescriptor)) %>%
   mutate(finalCountry = if_else(grepl("USA", finalCountry), "United States", finalCountry))
 
-allCountry <- allCountryMain %>% filter(db %in% c("dbGaP", "SRA"))
+allCountry <- allCountryMain %>% filter(db %in% c("dbGaP", "SRA05"))
+allCountryAlt <- allCountryMain %>% filter(db %in% c("dbGaP", "SRA"))
 
 # But we want to organise the plotting of worldBank by factor levels, so:
 allCountry$worldBank <- factor(allCountry$worldBank, levels = c("High income", "Upper middle\nincome", "Lower middle\nincome"))
+allCountryAlt$worldBank <- factor(allCountryAlt$worldBank, levels = c("High income", "Upper middle\nincome", "Lower middle\nincome"))
 
 dbByRegion <- allCountry %>% group_by(worldRegion, db) %>% summarise(value = sum(value), db = db) %>% distinct() %>% as.data.frame %>% 
+  ggplot(., aes(x = db, y=value, fill=worldRegion)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Sample depositor location\n(WB Economic Region)") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  scale_fill_wber() +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
+
+dbByRegionAlt <- allCountryAlt %>% group_by(worldRegion, db) %>% summarise(value = sum(value), db = db) %>% distinct() %>% as.data.frame %>% 
   ggplot(., aes(x = db, y=value, fill=worldRegion)) +
   geom_bar(stat = "identity") +
   ggtitle("Sample depositor location\n(WB Economic Region)") +
@@ -339,6 +379,18 @@ dbByEconomy <- allCountry %>% group_by(worldBank, db) %>% summarise(value = sum(
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
   theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
 
+dbByEconomyAlt <- allCountryAlt %>% group_by(worldBank, db) %>% summarise(value = sum(value), db = db) %>% distinct() %>% as.data.frame %>% 
+  ggplot(., aes(x = db, y=value, fill=worldBank)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Sample depositor location\n(WB Income Group)") +
+  xlab("Database") +
+  ylab("Number of samples") +
+  scale_fill_viridis_d(option = "viridis") +
+  coord_flip() +
+  guides(fill=guide_legend(title="", label.position="left")) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.justification = c(0,0), legend.position="bottom")
+
 # I was adding a blank space instead of a repeat of the third plot but it was messing things up with the spacing... better this way. 
 dbByRegion + dbByEconomy + dbByEconomy +
   plot_layout(design = mixed3DesignAlt) +
@@ -346,6 +398,15 @@ dbByRegion + dbByEconomy + dbByEconomy +
 
 ggsave("all_dbs_sample_properties_map_pre.pdf", width = 6, height = 6)
 ggsave("all_dbs_sample_properties_map_pre.png", width = 6, height = 6)
+
+# And now the strict one:
+dbByRegionAlt + dbByEconomyAlt + dbByEconomyAlt +
+  plot_layout(design = mixed3DesignAlt) +
+  plot_annotation(tag_levels = 'A')
+
+ggsave("all_dbs_sample_properties_strict_map_pre.pdf", width = 6, height = 6)
+ggsave("all_dbs_sample_properties_strict_map_pre.png", width = 6, height = 6)
+
 ```
 
 How overrepresented are these numbers? We begin by grabbing the UN population data and doing some more mergers - important to note that we add back the manual review data here because otherwise it would need a figure of its own:
@@ -383,12 +444,31 @@ ggplot(allCountry3, aes(x = excess, y=finalCountry, color=db)) +
   theme_bw(base_size = 8) +
   theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.position="bottom")
 
+# This one is for the reviewers... 
+ggsave("db_overrepresentation_all.pdf", width = 3, height = 8)
+ggsave("db_overrepresentation_all.png", width = 3, height = 8)
+
+# And then we make the one only with the new filtering:
+allCountry3 %>% filter(db != "SRA05") %>%
+ggplot(., aes(x = excess, y=finalCountry, color=db)) +
+  geom_point(size = 3) +
+  scale_x_continuous(trans='log10', breaks = trans_breaks("log10", function(x) 10^x), labels = scales::comma) +
+  geom_vline(xintercept = 1) +
+  annotation_logticks(sides="b") +
+  xlab("Overrepresentation in database\nrelative to global population") +
+  ylab("Depositing institution country") +
+  theme_bw(base_size = 8) +
+  theme(legend.title.align = 1, legend.direction = "horizontal", legend.background=element_blank(), legend.position="bottom")
+
+# This one is for the reviewers... 
 ggsave("db_overrepresentation.pdf", width = 3, height = 8)
 ggsave("db_overrepresentation.png", width = 3, height = 8)
 
+
+# And after this we move exclusively to a Jaro-Winklar distance of 0.0 for all plots, so we gotta just a filtering step to basically everything
+
 # We remake the plot 
-studybyRegion <- allSRAClean %>% count(SRA.Study, worldRegion) %>% drop_na(worldRegion) %>% 
-  ggplot(., aes(x = worldRegion, y=n,fill=worldRegion)) +
+studybyRegion <- allSRAClean %>% drop_na(strictCountry) %>% count(SRA.Study, worldRegion) %>% drop_na(worldRegion) %>%   ggplot(., aes(x = worldRegion, y=n,fill=worldRegion)) +
     geom_boxplot(width=0.8, outlier.shape = NA) +
     geom_jitter(size=0.8, width=0.2, color="#333333", alpha = 0.3) +
     ggtitle("Sample depositor location\n(WB Economic Region)") +
@@ -405,29 +485,57 @@ ggsave("allSRAClean_by_study_by_region.pdf", height=5, width=5)
 ggsave("allSRAClean_by_study_by_region.png", height=5, width=5) 
 
 # But why are there studies under 10 samples???? Is it just because we can't identify country?
-allSRAClean %>% group_by(SRA.Study) %>% summarise(biosample = n_distinct(BioSample)) %>% summarise(min(biosample))
-allSRAClean %>% drop_na(finalCountry) %>%group_by(SRA.Study) %>% summarise(biosample = n_distinct(BioSample)) %>% summarise(min(biosample)) # Indeed.
+allSRAClean %>% drop_na(strictCountry) %>% group_by(SRA.Study) %>% summarise(biosample = n_distinct(BioSample)) %>% summarise(min(biosample))
+allSRAClean %>% drop_na(strictCountry) %>%group_by(SRA.Study) %>% summarise(biosample = n_distinct(BioSample)) %>% summarise(min(biosample)) # Indeed.
 
 # Anyhow, how bad is this bias:
-allSRAClean %>% drop_na(finalCountry) %>% group_by(finalCountry) %>% summarise(samples = n()) %>% mutate(prop = samples/sum(samples)) %>% as.data.frame()
+allSRAClean %>% drop_na(strictCountry) %>% group_by(finalCountry) %>% summarise(samples = n()) %>% mutate(prop = samples/sum(samples)) %>% as.data.frame()
 
-allSRAClean %>% drop_na(finalCountry) %>% group_by(worldBank) %>% summarise(samples = n()) %>% mutate(prop = samples/sum(samples)) %>% as.data.frame()
+allSRAClean %>% drop_na(strictCountry) %>% group_by(worldBank) %>% summarise(samples = n()) %>% mutate(prop = samples/sum(samples)) %>% as.data.frame()
 
 # By study:
-allSRAClean %>% drop_na(finalCountry) %>% group_by(finalCountry) %>% summarise(studies = n_distinct(SRA.Study)) %>% mutate(prop = studies/sum(studies)) %>% as.data.frame()
+allSRAClean %>% drop_na(strictCountry) %>% group_by(finalCountry) %>% summarise(studies = n_distinct(SRA.Study)) %>% mutate(prop = studies/sum(studies)) %>% as.data.frame()
 
-allSRAClean %>% drop_na(finalCountry) %>% group_by(worldBank) %>% summarise(studies = n_distinct(SRA.Study)) %>% mutate(prop = studies/sum(studies)) %>% as.data.frame()
+allSRAClean %>% drop_na(strictCountry) %>% group_by(worldBank) %>% summarise(studies = n_distinct(SRA.Study)) %>% mutate(prop = studies/sum(studies)) %>% as.data.frame()
 
 # Let's quickly do a test for how many studies and samples come from HIC relative to all studies, given in the text as 74:
-hicStudyTest <- allSRAClean %>% drop_na(finalCountry) %>% group_by(worldBank) %>% summarise(studies = n_distinct(SRA.Study)) %>% mutate(prop = studies/sum(studies)) %>% as.data.frame()
+hicStudyTest <- allSRAClean %>% drop_na(strictCountry) %>% group_by(worldBank) %>% 
+  summarise(studies = n_distinct(SRA.Study)) %>% 
+  mutate(prop = studies/sum(studies)) %>% as.data.frame()
 binom.test(hicStudyTest[hicStudyTest$worldBank %in% "High income",]$studies, sum(hicStudyTest$studies), 0.74)
+
+# Finally, now that we have countries, we can look at who deposits from where, with some charming alluvial plot:
+allSRAClean <- allSRAClean %>%
+  mutate(
+    repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA")))
+
+# Alluvial plots and prep for the manual data only:
+repoAlluvial <- allSRAClean %>% drop_na(strictCountry) %>% 
+  count(strictCountry, repo)
+
+ggplot(data = repoAlluvial, aes(axis2 = repo, axis1 = strictCountry, y = n)) +
+   scale_x_discrete(limits = c("Depositing Country", "Depositing Repo"), expand = c(.2, .05)) +
+   geom_alluvium(aes(fill = repo)) +
+   # scale_fill_wber() +
+   geom_stratum(width=1/4) +
+   ylab("Samples") +
+   geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), direction = "y", size=0.02) +
+   geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+   theme_minimal(base_size = 8) +
+   theme(legend.position = "none")
+
+ggsave("repository_alluvial_for_reviewers.pdf", width = 5, height = 5)
+ggsave("repository_alluvial_for_reviewers.png", width = 5, height = 5)
+
+allSRAClean %>% drop_na(strictCountry) %>% 
+  count(repo, strictCountry)
 
 ```
 
 And now we're making a map with all of this...
 
 ```{r sra-map}
-toplot<-aggregate(BioSample~finalCountry,data=allSRAClean,FUN=length)
+toplot<-aggregate(BioSample~strictCountry,data=allSRAClean,FUN=length)
 colnames(toplot) <- c('name','samples')
 toplot$name[which(toplot$name=='United States')] <- 'United States of America'
 toplot$name[which(toplot$name=='UK')] <- 'United Kingdom'
@@ -462,18 +570,18 @@ Finally, we want some information on how many samples of what kind etc etc...
 
 ```{r figure-1-stats}
 # How many samples have a country
-allSRAClean %>% count(is.na(finalCountry))
+allSRAClean %>% count(is.na(strictCountry))
 
 # How many institutions?
-allSRAClean %>% drop_na(finalCountry) %>% summarise(studies = n_distinct(SRA.Study), countries = n_distinct(finalCountry))
+allSRAClean %>% drop_na(strictCountry) %>% summarise(studies = n_distinct(SRA.Study), countries = n_distinct(finalCountry))
 
 # Overrepresentation of submitting country relative to global population:
 allCountry3
 
 # We wanna test the USA, so:
-usaSamples <- allSRAClean %>% filter(finalCountry == "United States") %>% nrow()
-allSamples <- allSRAClean %>% drop_na(finalCountry) %>% nrow()
-usaProp <- allCountry3[allCountry3$finalCountry %in% "United States", ]$fractPop[1]
+usaSamples <- allSRAClean %>% filter(strictCountry == "United States") %>% nrow()
+allSamples <- allSRAClean %>% drop_na(strictCountry) %>% nrow()
+usaProp <- allCountry3[allCountry3$finalCountry %in% "United States" & allCountry3$db %in% "SRA" , ]$fractPop[1]
 
 # And finally, a binomial test for the USA
 binom.test(usaSamples, allSamples, usaProp)
@@ -482,7 +590,7 @@ binom.test(usaSamples, allSamples, usaProp)
 binom.test(usaSamples, allSamples, 0.4)
 
 # And another one for institutions in LATAM + Caribbean
-latamSamples <- allCountry3 %>% filter(worldRegion == "Latin America &\nCaribbean") %>% 
+latamSamples <- allCountry3 %>% filter(worldRegion == "Latin America &\nCaribbean" & db == "SRA") %>% 
   summarise(samples = sum(value.x)) %>%
   mutate(proportion = samples/allSamples)
 
@@ -499,31 +607,28 @@ allSRAClean %>% drop_na(pred_pop) %>% filter(missingness %in% c("(0,10]", "(10,2
 allSRAClean %>% drop_na(pred_pop) %>% summarise(studies = n_distinct(SRA.Study), samples = n_distinct(BioSample))
 ```
 
-Since we're here, we'll add a couple of analyses looking at the USA submitted samples in general vs non-USA submitted samples... but the question is, which? And do we use Jaro-Winklar 0 or 0.05?
-
-```{r usa-only-analyses}
-
-
-```
-
-
 And one final check... the agreement in country assignment between our two methods. 
 
 ```{r check-country-assignments}
 finalCountries <- allSRAFinal %>% count(SRA.Study, finalCountry)
-cleanCountries <- allSRAClean %>% count(SRA.Study, finalCountry)
+cleanCountries <- allSRAClean %>% count(SRA.Study, strictCountry)
 
 compareCountries <- left_join(finalCountries, cleanCountries, join_by("SRA.Study" == "SRA.Study"))
 
 # And now we tabulate:
-table(is.na(compareCountries$finalCountry.y))
-compareCountries %>% drop_na(finalCountry.y) %>% 
-  mutate(finalCountry.y = gsub("United States", "USA", finalCountry.y)) %>% 
-  distinct(SRA.Study, finalCountry.x, .keep_all = T) %>%
-  count(finalCountry.x == finalCountry.y)
+table(is.na(compareCountries$strictCountry))
+compareCountries %>% drop_na(strictCountry) %>% 
+  mutate(strictCountry = gsub("United States", "USA", strictCountry)) %>% 
+  distinct(SRA.Study, finalCountry, .keep_all = T) %>%
+  count(finalCountry == strictCountry)
 
-compareCountries %>% drop_na(finalCountry.y) %>% 
-  mutate(finalCountry.y = gsub("United States", "USA", finalCountry.y))
+compareCountries %>% drop_na(strictCountry) %>% 
+  mutate(strictCountry = gsub("United States", "USA", strictCountry))
+
+compareCountries %>% drop_na(strictCountry) %>% 
+  mutate(strictCountry = gsub("United States", "USA", strictCountry)) %>%
+  filter(finalCountry != strictCountry)
+
 ```
 
 
@@ -874,6 +979,53 @@ ggsave("fig2_by_study_boxplot_all.pdf", width=6.5, height=8)
 ggsave("fig2_by_study_boxplot_all.png", width=6.5, height=8)
 ```
 
+Finally, we examine the studies only from the USA, because reviewer 2 wants to see that:
+
+```{r only-usa-studies}
+allSRAUSA <- allSRAFinal %>% filter(finalCountry == "USA")
+
+sampleGeographyUSA <- allSRAUSA %>% count(SRA.Study, strictestGeography) %>% drop_na(strictestGeography)
+sampleRaceUSA <- allSRAUSA %>% count(SRA.Study, strictestRace) %>% drop_na(strictestRace)
+meltSampleGeographyUSA <- melt(sampleGeographyUSA)
+meltSampleRaceUSA <- melt(sampleRaceUSA)
+
+geobyStudyUSA <- ggplot(meltSampleGeographyUSA, aes(x = strictestGeography, y=value,fill=strictestGeography)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Submitted SRA descriptor\n(ancestral/geographic origin)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_geography() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+racebyStudyUSA <- ggplot(meltSampleRaceUSA, aes(x = strictestRace, y=value,fill=strictestRace)) +
+  geom_boxplot(width=0.8, outlier.shape = NA) +
+  geom_jitter(size=0.8, width=0.2, color="#333333") +
+  ggtitle("Submitted SRA descriptor\n(US Census term)") +
+  xlab("") +
+  ylab("Samples per study") +
+  scale_y_continuous(trans='log10') +
+  scale_fill_race() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position = "none")
+
+geobyStudyUSA
+racebyStudyUSA
+
+# Then let's do a chisq test for racial term usage between the USA and Belgium, for funsies:
+
+contTable <- allSRAFinal %>% filter(finalCountry == "USA" | finalCountry == "Belgium") %>% drop_na(strictestRace) %>% count(finalCountry, strictestRace)
+
+contTable2 <- pivot_wider(contTable, names_from = finalCountry, values_from = n, )
+contTable2$Belgium[is.na(contTable2$Belgium)] <- 0
+
+chisq.test(contTable2$Belgium, contTable2$USA)
+
+
+```
+
 
 # Figure 3: The manual review!
 
@@ -942,4 +1094,21 @@ litRevGeoPlot + litRevRacePlot + manualAlluvialCountry +
 
 ggsave("all_things_manual.pdf", width=6, height=6)
 ggsave("all_things_manual.png", width=6, height=6)
+```
+
+And really quickly, we want to directly compare the three datasets a bit more closely. First, how many manual review studies also had SRA metadata?
+
+```{r manual-vs-sra-1}
+litRevFinal %>% distinct(recount3) %>% nrow()
+
+common <- intersect(unique(allSRAFinal$SRA.Study), unique(litRevFinal$recount3)) # But this is only in the final dataset... 
+common
+setdiff(unique(allSRAFinal$SRA.Study), unique(litRevFinal$recount3))
+
+allSRAFinal %>% filter(SRA.Study %in% common) %>% count(SRA.Study, strictestRace)
+allSRAFinal %>% filter(SRA.Study %in% common) %>% count(SRA.Study, strictestGeography)
+litRevFinal %>% filter(recount3 %in% common)
+
+intersect(unique(allSRAClean$SRA.Study), unique(litRevFinal$recount3))
+setdiff(unique(litRevFinal$recount3), unique(allSRAClean$SRA.Study))
 ```

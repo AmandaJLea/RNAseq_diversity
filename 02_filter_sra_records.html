@@ -10,7 +10,7 @@
 
 
 
-<meta name="date" content="2026-02-04" />
+<meta name="date" content="2026-02-11" />
 
 <title>Population descriptor clean up and assignments</title>
 
@@ -351,7 +351,7 @@ display: none;
 
 <h1 class="title toc-ignore">Population descriptor clean up and
 assignments</h1>
-<h4 class="date">2026-02-04</h4>
+<h4 class="date">2026-02-11</h4>
 
 </div>
 
@@ -432,6 +432,15 @@ source10</code></pre>
 ## 1  DRA   9884
 ## 2  ENA  66123
 ## 3  SRA 671957</code></pre>
+<pre class="r"><code>study10 &lt;- allSRAFilt %&gt;% distinct(SRA.Study, .keep_all =T) %&gt;%
+  mutate(
+    repo = ifelse(grepl(&quot;^SR&quot;, SRA.Study), &quot;SRA&quot;, ifelse(grepl(&quot;^ER&quot;, SRA.Study), &quot;ENA&quot;, &quot;DRA&quot;))) %&gt;%
+  count(repo)
+study10</code></pre>
+<pre><code>##   repo     n
+## 1  DRA    90
+## 2  ENA   871
+## 3  SRA 11332</code></pre>
 <pre class="r"><code>allSRAFilt &lt;- allSRAFilt[!is.na(allSRAFilt$ETHNICITY) | !is.na(allSRAFilt$RACE) | !is.na(allSRAFilt$Population) | !is.na(allSRAFilt$reported_race) | !is.na(allSRAFilt$ancestry) | !is.na(allSRAFilt$race.ethnicity) | !is.na(allSRAFilt$primary_race) | !is.na(allSRAFilt$DONOR_ETHNICITY) ,] 
 
 # And now after cleaning for pop descriptors:
