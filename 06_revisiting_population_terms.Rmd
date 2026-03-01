@@ -99,15 +99,13 @@ First, it's worth remembering how the labels are made:
 
 There are a couple of options here:
 
-1. **Be very strict**: if the column says race, then it's a race, if the column says ethnicity, then I don't care what your term is, it's a geographic origin. This will over-correct, but should perhaps have been our starting position, to see how things improve with other choices. It should also resolve the problem of studies being split across descriptor categories.
-2. **Be somewhat strict**: We had previously decided that certain terms (Caucasian, white, African, black) were racial no matter the column label, which is perhaps a problem, so here I have left some terms that are not ambiguous but are clearly in the wrong column unchanged (eg African American or Native Hawaiian is racial, but black is not because it is used outside the USA without reference to the USA context). This will bungle some stuff and I suspect the moving of caucasian and white and black terms will make things way worse when we consider descriptor use within a study. 
-3. **Manual review** Leave things as they were with the original reclassification that we used, which does make some assumptions - caucasian is always racial, and white gets moved around a bit. 
+1. **Be very strict**: if the column says race, then it's a race, if the column says ethnicity, then I don't care what your term is, it's a geographic origin. This will over-correct, but should perhaps have been our starting position, to see how things improve with other choices. It should also resolve the problem of studies being split across descriptor categories. *This is the approach used in the paper, and coded in all downstream analyses as `strictestRace` and `strictestGeography`. All terms are available in Table S6 in the paper*
+2. Alternative 1: **Manual review** Leave things as they were with the original reclassification that we used, which does make some assumptions - caucasian is always racial, and white gets moved around a bit. This was our initial approach and was explored in more depth in `03_clean_up_ancestry_terms`, see that script for a more detailed breakdown. *Our full recoding under this schema is presented in Table S6 in the paper under the "alternative" heading, and coded in all downstream analyses as `finalRace` and `finalGeography`.*
+3. Alternative 2: **Be somewhat strict**: We had previously decided that certain terms (Caucasian, white, African, black) were racial no matter the column label, which is perhaps a problem, so here I have left some terms that are not ambiguous but are clearly in the wrong column unchanged (eg African American or Native Hawaiian is racial, but black is not because it is used outside the USA without reference to the USA context). This will bungle some stuff and I suspect the moving of caucasian and white and black terms will make things way worse when we consider descriptor use within a study. *This is coded below as downstream analyses as `strictRace` and `strictGeography` but not presented further in the final manuscript.*
 
-Let's go in order:
+### Strictest approach: The category label trumps all.
 
-### Option 1: The original category label trumps all:
-
-This method is worth exploring, to see how things look if we are strict (worth reporting in a supplement). All of the code used here and below is borrowed from `02_clean_ancestry_terms.Rmd` but without most of the intermediate qc because this is meant to be brutal and automatic.
+This method is worth exploring, to see how things look if we are strict (worth reporting in a supplement). All of the code used here and below is borrowed from `03_clean_up_ancestry_terms` but without most of the intermediate qc because this is meant to be brutal and automatic.
 
 This is coded as `IGR.term.strictest` in the schema, and as strictestRace/Geography in the file.
 
@@ -167,11 +165,16 @@ allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestR
 allSRAFinal[is.na(allSRAFinal$strictestGeography) & is.na(allSRAFinal$strictestRace),] %>% count(hispanic)
 ```
 
-### Option 2: The original category label trumps most things
+### Alternative 1: Intensive manual curation.
+
+Not repeating this, since it's what we did to begin with in `03_clean_up_ancestry_terms`. Captured in the columns `finalRace` and `finalGeography` in the object here.
+
+
+### Alternative 2: The original category label trumps most things.
 
 Only if it *really* matches the US Census term in the geography columns, or if it really doesn't match the census terms in the race columns, are things switched over.
 
-This is coded as `IGR.term.strict`
+This is coded as `IGR.term.strict` in temp files.
 
 ```{r strict-terms}
 popGeoNew <- popDescriptors[popDescriptors$IGR.coding.strict %in% "geography",]
@@ -252,10 +255,6 @@ Some familiar names in here that I've had to decide on before, and new entries:
 allSRAFinal[allSRAFinal$SRA.Study %in% c("SRP068551", "SRP107326", "SRP122876", "SRP150833", "SRP292867", "SRP179998", "SRP362734", "SRP301528"),]$strictRace <- NA
 allSRAFinal[allSRAFinal$SRA.Study %in% c("SRP068551", "SRP159625", "SRP241159"),]$strictGeography <- NA
 ```
-
-### Option 3: Intensive curation:
-
-Not repeating this, since it's what we did to begin with. Captured in the columns `finalRace` and `finalGeography`
 
 Now we compare all three approaches. 
 
