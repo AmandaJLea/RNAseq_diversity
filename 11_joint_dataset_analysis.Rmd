@@ -509,26 +509,31 @@ allSRAClean <- allSRAClean %>%
     repo = ifelse(grepl("^SR", SRA.Study), "SRA", ifelse(grepl("^ER", SRA.Study), "ENA", "DRA")))
 
 # Alluvial plots and prep for the manual data only:
+# For labelling, 10 most common depositing countries:
+top10Countries <- allSRAClean %>% drop_na(strictCountry) %>% count(strictCountry) %>% slice_max(n, n = 10) %>%  pull(strictCountry)
+
 repoAlluvial <- allSRAClean %>% drop_na(strictCountry) %>% 
-  count(strictCountry, repo)
+  count(strictCountry, repo, worldRegion)
 
 ggplot(data = repoAlluvial, aes(axis2 = repo, axis1 = strictCountry, y = n)) +
    scale_x_discrete(limits = c("Depositing Country", "Depositing Repo"), expand = c(.2, .05)) +
-   geom_alluvium(aes(fill = repo)) +
-   # scale_fill_wber() +
-   geom_stratum(width=1/4) +
+   geom_alluvium(aes(fill = worldRegion)) +
+   scale_fill_wber() +
+   geom_stratum(width = 1/5) +
    ylab("Samples") +
-   geom_text_repel(stat = "stratum", aes(label = after_stat(stratum)), direction = "y", size=0.02) +
-   geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=2.5) +
+   geom_text_repel(stat = "stratum", 
+                   aes(label = after_stat(ifelse(stratum %in% top10Countries | x == 2, as.character(stratum), ""))), 
+                   direction = "y", 
+                   size = 2.5,
+                   nudge_x = 0.3,
+                   segment.size = 0.3,
+                   segment.color = "grey50",
+                   min.segment.length = 0) +
    theme_minimal(base_size = 8) +
    theme(legend.position = "none")
 
 ggsave("repository_alluvial_for_reviewers.pdf", width = 5, height = 5)
 ggsave("repository_alluvial_for_reviewers.png", width = 5, height = 5)
-
-allSRAClean %>% drop_na(strictCountry) %>% 
-  count(repo, strictCountry)
-
 ```
 
 And now we're making a map with all of this...
@@ -609,32 +614,60 @@ allSRAClean %>% drop_na(pred_pop) %>% summarise(studies = n_distinct(SRA.Study),
 And one final check... the agreement in country assignment between our two methods. 
 
 ```{r check-country-assignments}
-finalCountries <- allSRAFinal %>% count(SRA.Study, finalCountry)
-cleanCountries <- allSRAClean %>% count(SRA.Study, strictCountry)
+finalCountries <- allSRAFinal %>% count(SRA.Study, finalCountry) # 248 rows because one study is deposited from multiple sites
+
+finalCountries %>% group_by(SRA.Study) %>%
+  filter(n() > 1)
+
+cleanCountries <- allSRAClean %>% count(SRA.Study, strictCountry) # 12303 rows because there's some studies with partial NAs... 
+cleanCountries %>% group_by(SRA.Study) %>%
+  filter(n() > 1) %>%
+  as.data.frame()
+
+# For example:
+allSRAClean[allSRAClean$SRA.Study %in% "SRP320421",]
+allSRAClean[allSRAClean$SRA.Study %in% "ERP010353",]
 
 compareCountries <- left_join(finalCountries, cleanCountries, join_by("SRA.Study" == "SRA.Study"))
 
 # And now we tabulate:
-table(is.na(compareCountries$strictCountry))
-compareCountries %>% drop_na(strictCountry) %>% 
-  mutate(strictCountry = gsub("United States", "USA", strictCountry)) %>% 
-  distinct(SRA.Study, finalCountry, .keep_all = T) %>%
-  count(finalCountry == strictCountry)
-
-compareCountries %>% drop_na(strictCountry) %>% 
-  mutate(strictCountry = gsub("United States", "USA", strictCountry))
-
-compareCountries %>% drop_na(strictCountry) %>% 
+compareCountries %>%
   mutate(strictCountry = gsub("United States", "USA", strictCountry)) %>%
-  filter(finalCountry != strictCountry)
+  group_by(SRA.Study, finalCountry) %>%
+  summarise(
+    has_match = any(!is.na(strictCountry) & strictCountry == finalCountry),
+    has_mismatch = any(!is.na(strictCountry) & strictCountry != finalCountry),
+    has_na = any(is.na(strictCountry)),
+    n.x = first(n.x),
+    .groups = "drop"
+  ) %>%
+  mutate(category = case_when(
+    has_match & !has_mismatch & !has_na ~ "full match",
+    has_mismatch & !has_match & !has_na ~ "full mismatch",
+    has_na & !has_match & !has_mismatch ~ "all NA",
+    has_match & has_na & !has_mismatch ~ "match + NA",
+    has_mismatch & has_na & !has_match ~ "mismatch + NA",
+    TRUE ~ "other"
+  )) %>%
+  group_by(category) %>%
+  summarise(n_studies = n(), total_n.x = sum(n.x))
 
+# But that's comfused about the matches, so to know the proper number, we need to merge the two objects at the raw data level:
+
+allSRACheck <- left_join(allSRAFinal, allSRAClean, by = c("BioSample"))
+allSRACheck %>% 
+  mutate(strictCountry = gsub("United States", "USA", strictCountry)) %>%
+  summarise(
+    has_match = sum(!is.na(strictCountry) & strictCountry == finalCountry.x),
+    has_mismatch = sum(!is.na(strictCountry) & strictCountry != finalCountry.x),
+    has_na = sum(is.na(strictCountry)))
 ```
 
-Bearing this in mind we actually want to compare country of deposition of all studies vs country of deposition of studies with metadata. This is inherently noisy (118:27 above) but what can you do?
+Bearing this in mind we actually want to compare country of deposition of all studies vs country of deposition of studies with metadata. This is inherently noisy (116:21 above) but what can you do?
 
 ```{r final-vs-clean}
 
-allSamplesClean <- allSRAClean %>% drop_na(strictCountry) %>% count(finalCountry)
+allSamplesClean <- allSRAClean %>% drop_na(strictCountry) %>% count(finalCountry) %>% mutate(finalCountry = gsub("United States", "USA", finalCountry))
 allSamplesFinal <- allSRAFinal %>% count(finalCountry)
 
 sampleRep <- left_join(allSamplesClean, allSamplesFinal, by = c("finalCountry"))
@@ -644,7 +677,7 @@ sampleRep <- sampleRep %>% mutate(
 
 ggplot(sampleRep, aes(y = finalCountry, x = frac)) +
   geom_bar(stat = "identity") +
-  ggtitle("Fraction of deposited samples with population descriptor metadata") +
+  ggtitle("Fraction of deposited samples with\npopulation descriptor metadata") +
   xlab("") +
   ylab("Depositing country") +
   # scale_fill_wber() +
@@ -666,7 +699,7 @@ studyRep <- studyRep %>% mutate(
 
 ggplot(studyRep, aes(y = finalCountry, x = frac)) +
   geom_bar(stat = "identity") +
-  ggtitle("Fraction of deposited studies with population descriptor metadata") +
+  ggtitle("Fraction of deposited studies with\npopulation descriptor metadata") +
   xlab("") +
   ylab("Depositing country") +
   # scale_fill_wber() +
@@ -677,8 +710,6 @@ ggsave("studies_with_metadata.pdf", width=3, height=5)
 ggsave("studies_with_metadata.png", width=3, height=5)
 
 ```
-
-
 
 
 ## Figure 2: Sample breakdown by descriptor
@@ -1162,9 +1193,13 @@ intersect(unique(allSRAClean$SRA.Study), unique(litRevFinal$recount3))
 setdiff(unique(litRevFinal$recount3), unique(allSRAClean$SRA.Study))
 ```
 
+And then, of the studies we looked at manually, how often did we fail to get metadata for them despite it existing? This is the raw dump from the survey, so it's messy and not worth thinking about too hard, but the individual studies are in there...
 
-Second, how many times did the country agree/disagree between SRAClean and the manual?
+```{r manual-metadata-yes-no}
+rawLitRev <- read.table("20260301_recount3_RNA-seq_diversity_Form_Responses.tsv", header=T, sep="\t", fill=T, comment.char = "")
 
-```{r manual-vs-sra-2}
+names(rawLitRev)[2] <- "SRA.Study"
+noLitData <- setdiff(rawLitRev$SRA.Study, litRevFinal$recount3)
 
+intersect(noLitData, unique(allSRAFinal$SRA.Study)) # None! Tada! We are done!
 ```
