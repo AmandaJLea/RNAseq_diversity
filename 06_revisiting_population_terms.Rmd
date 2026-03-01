@@ -20,6 +20,8 @@ library(plyr)
 library(reshape)
 library(tidyverse)
 library(viridis)
+library(ggalluvial)
+library(ggrepel)
 options(device = "quartz")
 
 allSRAFinal <- readRDS("20250517_allSRAAncestryTissuesDiseaseCenters.rds")
@@ -100,8 +102,8 @@ First, it's worth remembering how the labels are made:
 There are a couple of options here:
 
 1. **Be very strict**: if the column says race, then it's a race, if the column says ethnicity, then I don't care what your term is, it's a geographic origin. This will over-correct, but should perhaps have been our starting position, to see how things improve with other choices. It should also resolve the problem of studies being split across descriptor categories. *This is the approach used in the paper, and coded in all downstream analyses as `strictestRace` and `strictestGeography`. All terms are available in Table S6 in the paper*
-2. Alternative 1: **Manual review** Leave things as they were with the original reclassification that we used, which does make some assumptions - caucasian is always racial, and white gets moved around a bit. This was our initial approach and was explored in more depth in `03_clean_up_ancestry_terms`, see that script for a more detailed breakdown. *Our full recoding under this schema is presented in Table S6 in the paper under the "alternative" heading, and coded in all downstream analyses as `finalRace` and `finalGeography`.*
-3. Alternative 2: **Be somewhat strict**: We had previously decided that certain terms (Caucasian, white, African, black) were racial no matter the column label, which is perhaps a problem, so here I have left some terms that are not ambiguous but are clearly in the wrong column unchanged (eg African American or Native Hawaiian is racial, but black is not because it is used outside the USA without reference to the USA context). This will bungle some stuff and I suspect the moving of caucasian and white and black terms will make things way worse when we consider descriptor use within a study. *This is coded below as downstream analyses as `strictRace` and `strictGeography` but not presented further in the final manuscript.*
+2. **Alternative 1: Manual curation** Leave things as they were with the original reclassification that we used, which does make some assumptions - caucasian is always racial, and white gets moved around a bit. This was our initial approach and was explored in more depth in `03_clean_up_ancestry_terms`, see that script for a more detailed breakdown. *Our full recoding under this schema is presented in Table S6 in the paper under the "alternative" heading, and coded in all downstream analyses as `finalRace` and `finalGeography`.* (Yes I know the name is misleading)
+3. **Alternative 2: Be somewhat strict**: We had previously decided that certain terms (Caucasian, white, African, black) were racial no matter the column label, which is perhaps a problem, so here I have left some terms that are not ambiguous but are clearly in the wrong column unchanged (eg African American or Native Hawaiian is racial, but black is not because it is used outside the USA without reference to the USA context). This will bungle some stuff and I suspect the moving of caucasian and white and black terms will make things way worse when we consider descriptor use within a study. *This is coded below as downstream analyses as `strictRace` and `strictGeography` but not presented further in the final manuscript.*
 
 ### Strictest approach: The category label trumps all.
 
@@ -587,6 +589,48 @@ try(allSRAFinal %>% group_by(SRA.Study, strictestGeography, strictestRace) %>%
 ```
 
 Stopping here for now - I am feeling like `strictest` is my favourite, actually. I had previously looked at how to resolve some of the conflicted studies (at the `final` level, there's some new ones in the `strict` level), but hadn't implemented it...
+
+Added 20260301: Making reviewer 2 a table of how race and geography assignments vary between `final` and `strictest`.
+
+```{r compare-assignments}
+
+raceGeogAlluvial <- allSRAFinal %>%
+  select(strictestRace, strictRace, finalRace,
+         strictestGeography, strictGeography, finalGeography) %>%
+  mutate(
+    strictest = paste0("Race: ", strictestRace, " Geography: ", strictestGeography),
+    strict    = paste0("Race: ", strictRace, " Geography: ", strictGeography),
+    final     = paste0("Race: ", finalRace, " Geography: ", finalGeography)
+  ) %>%
+  mutate(
+    strictest = gsub("Race: NA ", "", strictest),
+    strictest = gsub("Geography: NA", "", strictest),
+    strict = gsub("Race: NA ", "", strict),
+    strict = gsub("Geography: NA", "", strict),
+    final = gsub("Race: NA ", "", final),
+    final = gsub("Geography: NA", "", final),
+  ) %>%
+  count(strictest, strict, final)
+
+ggplot(data = raceGeogAlluvial, aes(axis1 = strictest, axis3 = strict, axis2 = final, y = n)) +
+  scale_x_discrete(limits = c("Strictest", "Alternative 1", "Alternative 2"), expand = c(.3, .1)) +
+  geom_alluvium(aes(fill = strictest)) +
+  geom_stratum(width = 1/5) +
+  ylab("Samples") +
+  geom_text_repel(stat = "stratum",
+                  aes(label = after_stat(stratum)),
+                  direction = "y",
+                  nudge_x = 0.3,
+                  size = 1.7,
+                  hjust = 0) +
+  theme_minimal(base_size = 8) +
+  theme(legend.position = "none")
+
+ggsave("descriptor_alluvial_for_reviewers.pdf", width = 6, height = 5)
+ggsave("descriptor_alluvial_for_reviewers.png", width = 6, height = 5)
+
+```
+
 
 But now we gotta deal with one final hurdle: hispanic:
 
