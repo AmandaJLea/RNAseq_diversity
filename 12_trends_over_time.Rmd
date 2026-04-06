@@ -13,7 +13,7 @@ Whyyyyyy does it work when I run it on mine but not on hers.
 
 ```{r setup, include=FALSE} 
 # knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
-knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+knitr::opts_knit$set(root.dir="~/Library/CloudStorage/OneDrive-St.Vincent'sInstitute/Documents/RNA Diversity", echo=T)
 # But we also have to do this manually because R studio is stupid: 
 setwd(knitr::opts_knit$get("root.dir"))
 library(RColorBrewer)
@@ -25,6 +25,7 @@ library(thematic)
 library(scales)
 library(dplyr)
 library(tidyverse)
+library(cowplot)
 
 concatenate_non_na <- function(row) {
   non_na_values <- na.omit(row)
@@ -238,6 +239,7 @@ tmp4$group[which(tmp4$group == 'Other_cum')]<-"Other"
 panelBOuter <- ggplot(tmp4, aes(x=as.numeric(Var1)+2011, y=cumulative, color=group)) +
   geom_line(linewidth=1.2) +
   geom_point(size = 3) +
+  ggtitle("SRA (US Census term)") +
   labs(x = "Year", y = "Cumulative Samples") +
   scale_color_race() +
   scale_x_continuous(breaks=seq(2012,2022, by=2)) +
@@ -307,6 +309,7 @@ tmp4$group[which(tmp4$group == 'Other_cum')]<-"Other"
 panelCOuter <- ggplot(tmp4, aes(x=as.numeric(Var1)+2011, y=cumulative, color=group)) +
   geom_line(linewidth=1.2) +
   geom_point(size = 3) +
+  ggtitle("SRA (ancestral/geographic origin)") +
   labs(x = "Year", y = "Cumulative Samples") +
   scale_color_geography() +
   scale_x_continuous(breaks=seq(2012,2022, by=2)) +
@@ -379,6 +382,7 @@ panelDOuter <- tmp5 %>% filter(tmp5$Var1 > 2011 & tmp5$Var1 < 2023) %>%
   ggplot(., aes(x=Var1, y=cumulative, color=variable)) +
   geom_line(linewidth=1.2)+
   geom_point(size=3)+
+  ggtitle("dbGap") +
   labs(x = "Year", y = "Cumulative Samples") +
   scale_color_manual(values=dbGapColours)+
   scale_x_continuous(breaks=seq(2012,2022, by=2)) +
@@ -470,6 +474,34 @@ ggsave("trends_over_time_all.png", width = 7, height = 7)
 ggsave("trends_over_time_all_alt.pdf", width = 7, height = 7)
 ggsave("trends_over_time_all_alt.png", width = 7, height = 7)
 
+# A final three panel layout, with all legends on the bottom right. This one is annoying to make so I got help... 
+
+## 1. Extract legends from each joint panel, forcing a single vertical column
+leg1 <- cowplot::get_legend(panelDJoint & theme(legend.position = "right", legend.direction   = "vertical", legend.title.align = 1, legend.background = element_blank(), legend.justification = c(0, 0)))
+
+leg2 <- cowplot::get_legend(panelCJoint & theme(legend.position = "right", legend.direction   = "vertical", legend.title.align = 1, legend.background = element_blank(), legend.justification = c(0, 0)))
+
+leg3 <- cowplot::get_legend(panelBJoint & theme(legend.position = "right", legend.direction   = "vertical", legend.title.align = 1, legend.background = element_blank(), legend.justification = c(0, 0)))
+
+## 2. Remove legends from the main panels
+panelC_noleg <- panelCJoint & theme(legend.position = "none")
+panelD_noleg <- panelDJoint & theme(legend.position = "none")
+panelB_noleg <- panelBJoint & theme(legend.position = "none")
+
+## 3. Stack the three legends into a single column and wrap as a panel
+legend_col   <- cowplot::plot_grid(leg1, leg2, leg3, ncol = 3, align = "v")
+legend_panel <- patchwork::wrap_elements(legend_col)
+
+## 4. Final 2×2 layout with desired panel order and tags
+(panelD_noleg + panelC_noleg) / (panelB_noleg + legend_panel) +
+  plot_annotation(tag_levels = "A") &
+  theme(
+    plot.tag     = element_text(size = 10),
+    aspect.ratio = 1
+  )
+
+ggsave("trends_over_time_no_gwas.pdf", width = 7, height = 7)
+ggsave("trends_over_time_no_gwas.png", width = 7, height = 7)
 
 
 ```
