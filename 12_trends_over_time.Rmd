@@ -13,7 +13,7 @@ Whyyyyyy does it work when I run it on mine but not on hers.
 
 ```{r setup, include=FALSE} 
 # knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
-knitr::opts_knit$set(root.dir="~/Library/CloudStorage/OneDrive-St.Vincent'sInstitute/Documents/RNA Diversity", echo=T)
+knitr::opts_knit$set(root.dir="/Users/irene/Library/CloudStorage/OneDrive-St.Vincent'sInstitute/Documents/RNA Diversity", echo=T)
 # But we also have to do this manually because R studio is stupid: 
 setwd(knitr::opts_knit$get("root.dir"))
 library(RColorBrewer)
@@ -208,7 +208,7 @@ tmp3$NH_OPI_cum <- ave(tmp3$`Native Hawaiian and\nother Pacific Islander`, FUN=c
 tmp3$Multiple_cum <- ave(tmp3$Multiple, FUN=cumsum)
 tmp3$Hispanic_cum <- ave(tmp3$Hispanic, FUN=cumsum)
 tmp3$Other_cum <- ave(tmp3$Other, FUN=cumsum)
-# tmp3$White_cum <- ave(tmp3$White, FUN=cumsum)
+tmp3$White_cum <- ave(tmp3$White, FUN=cumsum)
 
 tmp3$prop_white<-tmp3$White/apply(tmp3[,c(2:9)],1,sum)
 
@@ -225,7 +225,7 @@ panelBInner <- ggplot(tmp3,aes(x=2012:2022, y=1-prop_white)) +
 
 panelBInner
 
-tmp4<-tmp3[,c(1,10:16)] %>%
+tmp4<-tmp3[,c(1,10:17)] %>%
   pivot_longer(!Var1, names_to = "group", values_to = "cumulative")
 
 tmp4$group[which(tmp4$group == 'AI_AN_cum')]<-"American Indian and\nAlaska Native"
@@ -235,6 +235,8 @@ tmp4$group[which(tmp4$group == 'NH_OPI_cum')]<-"Native Hawaiian and\nother Pacif
 tmp4$group[which(tmp4$group == 'Multiple_cum')]<-"Multiple"
 tmp4$group[which(tmp4$group == 'Hispanic_cum')]<-"Hispanic"
 tmp4$group[which(tmp4$group == 'Other_cum')]<-"Other"
+tmp4$group[which(tmp4$group == 'White_cum')]<-"White"
+
 
 panelBOuter <- ggplot(tmp4, aes(x=as.numeric(Var1)+2011, y=cumulative, color=group)) +
   geom_line(linewidth=1.2) +
@@ -296,7 +298,7 @@ tmp4<-tmp3[,c(1,13:23)] %>%
 
 tmp4$group[which(tmp4$group == 'SSAfr_cum')]<-"Sub-Saharan Africa"
 tmp4$group[which(tmp4$group == 'NAWA_cum')]<-"North Africa and\nWestern Asia"
-# tmp4$group[which(tmp4$group == 'Europe_cum')]<-"Europe"
+tmp4$group[which(tmp4$group == 'Europe_cum')]<-"Europe"
 tmp4$group[which(tmp4$group == 'SAS_cum')]<-"South Asia"
 tmp4$group[which(tmp4$group == 'SEA_cum')]<-"Southeast Asia"
 tmp4$group[which(tmp4$group == 'EAS_cum')]<-"East Asia"
@@ -376,9 +378,9 @@ tmp4$variable <- factor(tmp4$group, levels = c("African", "African American", "E
 
 dbGapColours <- brewer.pal(9,"Set3")
 
-tmp5<-subset(tmp4,group!='European')
+# tmp5<-subset(tmp4,group!='European')
 
-panelDOuter <- tmp5 %>% filter(tmp5$Var1 > 2011 & tmp5$Var1 < 2023) %>% 
+panelDOuter <- tmp4 %>% filter(tmp4$Var1 > 2011 & tmp4$Var1 < 2023) %>% 
   ggplot(., aes(x=Var1, y=cumulative, color=variable)) +
   geom_line(linewidth=1.2)+
   geom_point(size=3)+
@@ -464,15 +466,15 @@ panelDJoint <- panelDOuter + inset_element(panelDInner, left=0.01, bottom=0.35, 
   plot_annotation(tag_levels = 'A') &
     theme(plot.tag = element_text(size = 10))
 
-ggsave("trends_over_time_all.pdf", width = 7, height = 7)
-ggsave("trends_over_time_all.png", width = 7, height = 7)
+ggsave("trends_over_time_all_euro.pdf", width = 7, height = 7)
+ggsave("trends_over_time_all_euro.png", width = 7, height = 7)
 
 ((panelE / panelCJoint) | (panelDJoint / panelBJoint)) +
   plot_annotation(tag_levels = 'A') &
     theme(plot.tag = element_text(size = 10))
 
-ggsave("trends_over_time_all_alt.pdf", width = 7, height = 7)
-ggsave("trends_over_time_all_alt.png", width = 7, height = 7)
+ggsave("trends_over_time_all_alt_euro.pdf", width = 7, height = 7)
+ggsave("trends_over_time_all_alt_euro.png", width = 7, height = 7)
 
 # A final three panel layout, with all legends on the bottom right. This one is annoying to make so I got help... 
 
@@ -500,8 +502,8 @@ legend_panel <- patchwork::wrap_elements(legend_col)
     aspect.ratio = 1
   )
 
-ggsave("trends_over_time_no_gwas.pdf", width = 7, height = 7)
-ggsave("trends_over_time_no_gwas.png", width = 7, height = 7)
+ggsave("trends_over_time_no_gwas_euro.pdf", width = 7, height = 7)
+ggsave("trends_over_time_no_gwas_euro.png", width = 7, height = 7)
 
 
 ```
