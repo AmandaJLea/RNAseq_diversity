@@ -9,7 +9,7 @@ editor_options:
 We will finally analyse this data properly, and bring all datasets together... But there's been changes to figures! So we gotta get creative.   
 
 ```{r setup, include=F}
-knitr::opts_knit$set(root.dir="~/OneDrive - St Vincent's Institute/Documents/RNA\ Diversity/", echo=T)
+knitr::opts_knit$set(root.dir="/Users/irene/Library/CloudStorage/OneDrive-St.Vincent'sInstitute/Documents/RNA Diversity", echo=T)
 # But we also have to do this manually because R studio is stupid: 
 setwd(knitr::opts_knit$get("root.dir"))
 library(ggplot2)
@@ -309,7 +309,7 @@ Figure 1: 1A and 1B with SRA and dbGap only, then 1C [map] (but see below for op
 
 A - Yes correct (and yes seems like a good place to add more about the Center Name analyses as appropriate). 1D could go to the supplement.
 
-```{r plot-clean-country, out.width="100%", echo=F}
+```{r plot-clean-country, out.width="100%", echo=T}
 sraCountry <- allSRAClean %>% drop_na(finalCountry) %>% count(finalCountry, worldRegion, worldBank) %>% melt() %>% arrange(worldRegion) %>% mutate(db = "SRA05")
 
 sraCountry %>% group_by(worldRegion) %>%
